@@ -130,8 +130,13 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
         },
         isLoading: false
       });
-    } catch {
-      // Fallback to demo mode
+} catch (error) {
+  console.error(
+    '[Silvite Translate Lab] Real MiMo API failed, falling back to demo mode:',
+    error
+  );
+
+  // Fallback to demo mode
       const isChinese = /[\u4e00-\u9fa5]/.test(state.inputText);
       set({
         result: {
