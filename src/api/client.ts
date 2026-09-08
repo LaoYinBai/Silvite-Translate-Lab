@@ -13,6 +13,7 @@ export interface TranslationRequest {
 export interface TranslationResponse {
   source_language: 'zh' | 'en';
   target_language: 'en' | 'zh';
+  detected_style?: 'natural' | 'literary' | 'academic' | 'business' | 'comic';
   translation: string;
   detected_text?: string;
   segments: Array<{

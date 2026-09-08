@@ -1,8 +1,17 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useTranslationStore } from '../../store/translationStore';
+import { useTranslationStore, type TranslationMode } from '../../store/translationStore';
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_SIZE = 10 * 1024 * 1024;
+
+const MODE_OPTIONS: Array<{ value: TranslationMode; label: string }> = [
+  { value: 'auto', label: '自动' },
+  { value: 'natural', label: '自然' },
+  { value: 'literary', label: '文学' },
+  { value: 'academic', label: '学术' },
+  { value: 'business', label: '商务' },
+  { value: 'comic', label: '漫画' },
+];
 
 export function InputArea() {
   const { 
@@ -12,6 +21,8 @@ export function InputArea() {
     setInputImage, 
     inputMode, 
     setInputMode,
+    mode,
+    setMode,
     isLoading 
   } = useTranslationStore();
   
@@ -192,17 +203,19 @@ export function InputArea() {
             {/* Divider */}
             <div className="w-px h-6 bg-[#e0e0e0]" />
             
-            {/* Language direction segmented control */}
-            <div className="segmented-control">
-              <button className="segmented-control-item active">
-                自动
-              </button>
-              <button className="segmented-control-item">
-                中 → 英
-              </button>
-              <button className="segmented-control-item">
-                英 → 中
-              </button>
+            {/* Translation mode segmented control */}
+            <div className="segmented-control" role="group" aria-label="翻译模式">
+              {MODE_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setMode(option.value)}
+                  aria-pressed={mode === option.value}
+                  className={`segmented-control-item ${mode === option.value ? 'active' : ''}`}
+                >
+                  {option.label}
+                </button>
+              ))}
             </div>
             
             {/* Divider */}
