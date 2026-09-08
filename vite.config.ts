@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-  base: '/silvite-translate-lab/',
+  base: '/',
   build: {
     outDir: 'dist',
     sourcemap: false,
