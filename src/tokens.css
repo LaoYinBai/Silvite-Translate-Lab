@@ -1,0 +1,294 @@
+/**
+ * Silvite Web Frontend Design System
+ * Unified design tokens from GitHub Primer, Brave Leo, Vercel Geist, and more
+ * Version: 1.0.0
+ */
+
+:root {
+  /* ========================================
+     COLOR SYSTEM
+     ======================================== */
+  
+  /* Canvas & Surface */
+  --color-canvas: #ffffff;
+  --color-canvas-subtle: #f6f8fa;
+  --color-canvas-inset: #eff2f5;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  
+  /* Text Hierarchy */
+  --color-text-primary: #1f2328;
+  --color-text-secondary: #656d76;
+  --color-text-tertiary: #8b949e;
+  --color-text-placeholder: #afb8c1;
+  --color-text-inverse: #ffffff;
+  
+  /* Brand & Accent */
+  --color-accent: #0969da;
+  --color-accent-hover: #0550ae;
+  --color-accent-muted: #ddf4ff;
+  --color-accent-emphasis: #0969da;
+  
+  /* Interactive States */
+  --color-interactive: #0969da;
+  --color-interactive-hover: #0550ae;
+  --color-interactive-active: #033d8b;
+  --color-interactive-disabled: #e1e4e8;
+  
+  /* Borders */
+  --color-border-default: #d1d9e0;
+  --color-border-muted: #e1e4e8;
+  --color-border-emphasis: #1f2328;
+  
+  /* Feedback Colors */
+  --color-success: #1a7f37;
+  --color-success-subtle: #dafbe1;
+  --color-warning: #bf8700;
+  --color-warning-subtle: #fff8c5;
+  --color-danger: #d1242f;
+  --color-danger-subtle: #ffebe9;
+  --color-info: #0969da;
+  --color-info-subtle: #ddf4ff;
+  
+  /* ========================================
+     TYPOGRAPHY
+     ======================================== */
+  
+  /* Font Stacks */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Fira Mono', 'Roboto Mono', 'Courier New', monospace;
+  --font-display: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  
+  /* Type Scale */
+  --text-display-xl: 600 48px/1.1 var(--font-display);
+  --text-display-lg: 600 36px/1.2 var(--font-display);
+  --text-display-md: 600 30px/1.25 var(--font-display);
+  --text-display-sm: 600 24px/1.33 var(--font-display);
+  --text-title-lg: 600 20px/1.4 var(--font-sans);
+  --text-title-md: 600 16px/1.5 var(--font-sans);
+  --text-body-lg: 400 18px/1.6 var(--font-sans);
+  --text-body-md: 400 16px/1.5 var(--font-sans);
+  --text-body-sm: 400 14px/1.43 var(--font-sans);
+  --text-caption: 400 12px/1.33 var(--font-sans);
+  --text-code: 400 14px/1.6 var(--font-mono);
+  
+  /* ========================================
+     SPACING SYSTEM (4px base)
+     ======================================== */
+  
+  --space-0: 0;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+  
+  /* Semantic Spacing */
+  --space-tight: var(--space-1);
+  --space-condensed: var(--space-2);
+  --space-normal: var(--space-3);
+  --space-spacious: var(--space-4);
+  --space-loose: var(--space-6);
+  
+  /* ========================================
+     BORDER & RADIUS
+     ======================================== */
+  
+  --border-width: 1px;
+  --border-width-thick: 2px;
+  
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+  
+  /* Semantic Radius */
+  --radius-control: var(--radius-md);
+  --radius-card: var(--radius-lg);
+  --radius-modal: var(--radius-xl);
+  --radius-button: var(--radius-md);
+  
+  /* ========================================
+     SHADOWS & ELEVATION
+     ======================================== */
+  
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  
+  /* Elevation Levels */
+  --elevation-low: var(--shadow-xs);
+  --elevation-medium: var(--shadow-md);
+  --elevation-high: var(--shadow-xl);
+  --elevation-overlay: var(--shadow-2xl);
+  
+  /* ========================================
+     Z-INDEX SCALE
+     ======================================== */
+  
+  --zIndex-behind: -1;
+  --zIndex-default: 0;
+  --zIndex-sticky: 100;
+  --zIndex-dropdown: 200;
+  --zIndex-overlay: 300;
+  --zIndex-modal: 400;
+  --zIndex-popover: 500;
+  --zIndex-toast: 600;
+  --zIndex-skipLink: 700;
+  
+  /* ========================================
+     ANIMATION & MOTION
+     ======================================== */
+  
+  --duration-fast: 100ms;
+  --duration-normal: 200ms;
+  --duration-slow: 300ms;
+  --duration-slower: 500ms;
+  
+  --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  
+  --transition-colors: color var(--duration-normal) var(--ease-default),
+                       background-color var(--duration-normal) var(--ease-default),
+                       border-color var(--duration-normal) var(--ease-default);
+  --transition-transform: transform var(--duration-normal) var(--ease-default);
+  --transition-opacity: opacity var(--duration-normal) var(--ease-default);
+  --transition-shadow: box-shadow var(--duration-normal) var(--ease-default);
+  
+  /* ========================================
+     BREAKPOINTS
+     ======================================== */
+  
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+  
+  /* Touch Targets */
+  --touch-target: 44px;
+  --touch-target-sm: 32px;
+  
+  /* Container Widths */
+  --container-sm: 640px;
+  --container-md: 768px;
+  --container-lg: 1024px;
+  --container-xl: 1280px;
+  --container-2xl: 1536px;
+}
+
+/* ========================================
+   DARK THEME
+   ======================================== */
+
+[data-theme="dark"],
+.dark {
+  --color-canvas: #0d1117;
+  --color-canvas-subtle: #161b22;
+  --color-canvas-inset: #010409;
+  --color-surface: #161b22;
+  --color-surface-raised: #1c2128;
+  
+  --color-text-primary: #e6edf3;
+  --color-text-secondary: #8b949e;
+  --color-text-tertiary: #6e7681;
+  --color-text-placeholder: #484f58;
+  
+  --color-accent: #58a6ff;
+  --color-accent-hover: #79c0ff;
+  --color-accent-muted: #0d2239;
+  --color-accent-emphasis: #58a6ff;
+  
+  --color-interactive: #58a6ff;
+  --color-interactive-hover: #79c0ff;
+  --color-interactive-active: #a5d6ff;
+  --color-interactive-disabled: #21262d;
+  
+  --color-border-default: #30363d;
+  --color-border-muted: #21262d;
+  --color-border-emphasis: #e6edf3;
+  
+  --color-success: #3fb950;
+  --color-success-subtle: #0d2818;
+  --color-warning: #d29922;
+  --color-warning-subtle: #2e1800;
+  --color-danger: #f85149;
+  --color-danger-subtle: #3d1214;
+  --color-info: #58a6ff;
+  --color-info-subtle: #0d2239;
+  
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+/* ========================================
+   SYSTEM PREFERENCES
+   ======================================== */
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-canvas: #0d1117;
+    --color-canvas-subtle: #161b22;
+    --color-canvas-inset: #010409;
+    --color-surface: #161b22;
+    --color-surface-raised: #1c2128;
+    
+    --color-text-primary: #e6edf3;
+    --color-text-secondary: #8b949e;
+    --color-text-tertiary: #6e7681;
+    --color-text-placeholder: #484f58;
+    
+    --color-accent: #58a6ff;
+    --color-accent-hover: #79c0ff;
+    --color-accent-muted: #0d2239;
+    
+    --color-border-default: #30363d;
+    --color-border-muted: #21262d;
+    --color-border-emphasis: #e6edf3;
+    
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ========================================
+   FOCUS STYLES
+   ======================================== */
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
