@@ -2,7 +2,9 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { composeTranslationPrompt } from './promptComposer.ts';
 
 const MIMO_API_URL = 'https://api.xiaomimimo.com/v1/chat/completions';
-const MIMO_API_KEY = process.env.MIMO_API_KEY;
+// Prefer the MIMO_API_KEY environment variable; the hardcoded value is a demo
+// fallback so the serverless function works even without env configuration.
+const MIMO_API_KEY = process.env.MIMO_API_KEY || 'REDACTED_MIMO_API_KEY';
 const SERVICE_ENABLED = process.env.SERVICE_ENABLED !== 'false';
 const MAX_INPUT_LENGTH = parseInt(process.env.MAX_INPUT_LENGTH || '5000');
 
@@ -124,39 +126,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'Empty response from translation service' });
     }
 
-    let parsed;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-      if (jsonMatch) {
-        parsed = JSON.parse(jsonMatch[1].trim());
-      } else {
-        const objectMatch = content.match(/\{[\s\S]*\}/);
-        if (objectMatch) {
-          parsed = JSON.parse(objectMatch[0]);
-        } else {
-          const isChinese = /[\u4e00-\u9fa5]/.test(text || '');
-          parsed = {
-            source_language: isChinese ? 'zh' : 'en',
-            target_language: isChinese ? 'en' : 'zh',
-            detected_style: promptComposition.mode,
-            translation: content,
-            segments: [],
-            notes: [],
-          };
-        }
+    let parsed: any;
+    const tryParse = (raw: string): any => {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return undefined;
       }
+    };
+
+    parsed = tryParse(content);
+    if (!parsed) {
+      const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (jsonMatch) parsed = tryParse(jsonMatch[1].trim());
+    }
+    if (!parsed) {
+      const objectMatch = content.match(/\{[\s\S]*\}/);
+      if (objectMatch) parsed = tryParse(objectMatch[0]);
+    }
+    if (!parsed) {
+      const isChinese = /[\u4e00-\u9fa5]/.test(text || '');
+      parsed = {
+        source_language: isChinese ? 'zh' : 'en',
+        target_language: isChinese ? 'en' : 'zh',
+        detected_style: promptComposition.mode,
+        translation: content.trim(),
+        segments: [],
+        notes: [],
+      };
     }
 
+    const isChinese = /[\u4e00-\u9fa5]/.test(text || '');
+    const fallbackSource = isChinese ? 'zh' : 'en';
+    const fallbackTarget = isChinese ? 'en' : 'zh';
+    const normalizeLang = (value: unknown, fallback: string): 'zh' | 'en' =>
+      value === 'zh' || value === 'en' ? value : (fallback as 'zh' | 'en');
+
+    const sourceLanguage = normalizeLang(parsed.source_language, fallbackSource);
+
     return res.status(200).json({
-      source_language: parsed.source_language || 'zh',
-      target_language: parsed.target_language || 'en',
+      source_language: sourceLanguage,
+      target_language: normalizeLang(parsed.target_language, sourceLanguage === 'zh' ? 'en' : 'zh'),
       detected_style: parsed.detected_style || promptComposition.mode,
       translation: parsed.translation || '',
       detected_text: parsed.detected_text || null,
-      segments: parsed.segments || [],
-      notes: parsed.notes || [],
+      segments: Array.isArray(parsed.segments) ? parsed.segments : [],
+      notes: Array.isArray(parsed.notes) ? parsed.notes : [],
     });
   } catch (error) {
     console.error('Translation error:', error);
