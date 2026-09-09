@@ -1,35 +1,32 @@
+import { useEffect } from 'react';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { InputArea } from './components/InputArea/InputArea';
 import { ResultArea } from './components/ResultArea/ResultArea';
 import { useTranslationStore } from './store/translationStore';
-import { DEMO_SAMPLES } from './demo/samples';
 
 function App() {
   const { 
-    setInputText, 
-    setInputMode,
-    setResult,
     result,
-    isLoading
+    isLoading,
+    checkService
   } = useTranslationStore();
+
+  useEffect(() => {
+    checkService();
+  }, [checkService]);
 
   const handleNewChat = () => {
     useTranslationStore.getState().reset();
-  };
-
-  const loadDemo = (key: keyof typeof DEMO_SAMPLES) => {
-    const demo = DEMO_SAMPLES[key];
-    setInputText(demo.input);
-    setInputMode('text');
-    setResult(demo.result);
   };
 
   const hasResult = result || isLoading;
 
   return (
     <div className="flex h-full bg-[#fafafa]">
-      {/* Sidebar */}
-      <Sidebar onNewChat={handleNewChat} />
+      {/* Sidebar - hidden on small screens for basic mobile usability */}
+      <div className="hidden md:block h-full">
+        <Sidebar onNewChat={handleNewChat} />
+      </div>
       
       {/* Main content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -41,27 +38,12 @@ function App() {
               实验版
             </span>
           </div>
-          
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => loadDemo('textZh')}
-              className="btn btn-ghost h-[38px]"
-            >
-              示例：中 → 英
-            </button>
-            <button
-              onClick={() => loadDemo('textEn')}
-              className="btn btn-ghost h-[38px]"
-            >
-              示例：英 → 中
-            </button>
-          </div>
         </header>
         
         {/* Content area - scrollable */}
         <div className="flex-1 overflow-y-auto">
           {/* Workspace - true center (vertical + horizontal) */}
-          <div className="min-h-full flex items-center justify-center px-10 py-10">
+          <div className="min-h-full flex items-center justify-center px-6 md:px-10 py-10">
             {/* Workspace container */}
             <div className="w-full max-w-[900px]">
               {!hasResult ? (

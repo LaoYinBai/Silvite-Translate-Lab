@@ -3,6 +3,53 @@ import { useTranslationStore, type TranslationMode } from '../../store/translati
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_SIZE = 10 * 1024 * 1024;
+// EdgeOne edge functions accept request bodies up to ~1MB. Keep the
+// serialized data URL safely below that; larger images are re-encoded.
+const MAX_DATA_URL_LENGTH = 700_000;
+const RAW_IMAGE_LIMIT = 500 * 1024;
+
+function readAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('图片读取失败'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImageElement(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('图片解析失败'));
+    img.src = src;
+  });
+}
+
+async function compressToDataUrl(file: File): Promise<string> {
+  const original = await readAsDataUrl(file);
+  if (file.size <= RAW_IMAGE_LIMIT) return original;
+
+  const img = await loadImageElement(original);
+  const maxEdge = 2000;
+  const scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(img.width * scale));
+  canvas.height = Math.max(1, Math.round(img.height * scale));
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return original;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  let quality = 0.9;
+  let dataUrl = canvas.toDataURL('image/jpeg', quality);
+  while (dataUrl.length > MAX_DATA_URL_LENGTH && quality > 0.5) {
+    quality -= 0.1;
+    dataUrl = canvas.toDataURL('image/jpeg', quality);
+  }
+  return dataUrl.length <= original.length ? dataUrl : original;
+}
 
 const MODE_OPTIONS: Array<{ value: TranslationMode; label: string }> = [
   { value: 'auto', label: '自动' },
@@ -27,19 +74,27 @@ export function InputArea() {
   } = useTranslationStore();
   
   const [isDragOver, setIsDragOver] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const processFile = useCallback(async (file: File) => {
-    if (!ALLOWED_TYPES.includes(file.type)) return;
-    if (file.size > MAX_SIZE) return;
+    setImageError(null);
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setImageError('不支持的文件格式，请使用 JPG、PNG 或 WebP 图片');
+      return;
+    }
+    if (file.size > MAX_SIZE) {
+      setImageError('图片过大，最大支持 10MB');
+      return;
+    }
     
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const base64 = e.target?.result as string;
+    try {
+      const base64 = await compressToDataUrl(file);
       setInputImage(base64);
       setInputMode('image');
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      setImageError(err instanceof Error ? err.message : '图片处理失败');
+    }
   }, [setInputImage, setInputMode]);
   
   const handleDragEnter = useCallback((e: React.DragEvent) => {
@@ -263,6 +318,26 @@ export function InputArea() {
           <div className="bg-white rounded-xl px-8 py-5 shadow-lg">
             <p className="text-[16px] font-medium text-[#1677ff]">松开即可上传图片</p>
           </div>
+        </div>
+      )}
+      
+      {/* Image validation / processing error */}
+      {imageError && (
+        <div role="alert" className="mt-3 px-4 py-3 bg-[#fff2f0] border border-[#ff4d4f] rounded-lg flex items-center gap-2">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-[#ff4d4f] flex-shrink-0" aria-hidden="true">
+            <path d="M8 1a7 7 0 110 14A7 7 0 018 1zm-.75 3.75a.75.75 0 00-1.5 0v3.5a.75.75 0 001.5 0v-3.5zm.75 6.25a.75.75 0 100-1.5.75.75 0 000 1.5z" fill="currentColor"/>
+          </svg>
+          <span className="text-[13px] text-[#ff4d4f]">{imageError}</span>
+          <button
+            type="button"
+            onClick={() => setImageError(null)}
+            aria-label="关闭提示"
+            className="ml-auto text-[#ff4d4f] hover:text-[#d9363e]"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+              <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
         </div>
       )}
     </div>

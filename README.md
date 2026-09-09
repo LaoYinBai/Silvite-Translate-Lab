@@ -6,80 +6,63 @@ Experimental AI-assisted translation tool for Chinese-English translation scenar
 
 - **Auto Language Detection**: Automatically detects Chinese/English and translates to the other
 - **Text Translation**: Direct text input with real-time translation
-- **Image Translation**: Drag & drop, paste, or upload images for translation
-- **Translation Modes**: Auto, Natural, Literary, Academic, Business, Comic
+- **Image Translation**: Drag & drop, paste (Ctrl+V), or upload images; auto-compressed client-side
+- **Six Translation Modes**: Auto (dynamic classification), Natural, Literary, Academic, Business, Comic
 - **Advanced Options**: Context, Terminology, Preserve Names, Explain Translation
-- **Demo Mode**: Pre-loaded samples for demonstration
+- **Local Export**: PDF (browser print pipeline, searchable/copyable text) and Word (.docx)
+- **Demo Samples**: Sidebar samples for offline classroom demonstration
 
-## Quick Start
+## Architecture
 
-### Local Development
-
-```bash
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-
-# Build for production
-npm run build
+```
+GitHub repository
+  └─ EdgeOne Pages (auto build on push)
+       ├─ Static frontend  (dist/, root base path)
+       └─ Edge Function    (functions/api/translate.js → POST /api/translate)
+            └─ Xiaomi MiMo V2.5 (model: mimo-v2.5, fixed server-side)
 ```
 
-### Environment Variables
+- Frontend: React 19 + Vite + TypeScript + Tailwind CSS 4 + Zustand
+- Backend: EdgeOne Pages Functions (V8 edge runtime, Web APIs only)
+- The MiMo API key lives only in the Edge Function environment (`context.env.MIMO_API_KEY`).
+  The frontend bundle contains no keys.
+- Prompts are inlined in `functions/api/prompts.mjs` (edge runtime has no filesystem).
 
-Create a `.env.local` file for local development:
+## Local Development
 
 ```bash
-MIMO_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxx
+npm ci
+npm run api     # local Edge Function server on :3001 (reads .env.local)
+npm run dev     # Vite dev server on :5173, proxies /api → :3001
+npm test        # node:test suite (15 tests)
+npm run build   # tsc + vite build → dist/
+```
+
+Create `.env.local` (git-ignored via `*.local`) for local API development:
+
+```
+MIMO_API_KEY=sk-xxxx
 SERVICE_ENABLED=true
+RATE_LIMIT=30
 ```
 
-### Deploy to GitHub Pages
+## Deploy (EdgeOne Pages)
 
-1. Push to GitHub
-2. Go to Settings > Pages
-3. Select "GitHub Actions" as source
-4. The workflow will automatically deploy on push to main
+1. Push to GitHub (`main`).
+2. In the EdgeOne Pages console, import the Git repository:
+   - Framework: Vite (auto-detected)
+   - Install: `npm ci`
+   - Build: `npm run build`
+   - Output: `dist`
+3. Add environment variable `MIMO_API_KEY` in the EdgeOne project settings
+   (Functions can also read `SERVICE_ENABLED`, `ALLOWED_ORIGIN`, `RATE_LIMIT`,
+   `RATE_LIMIT_WINDOW_MS`, `MAX_INPUT_LENGTH`).
+4. Bind your custom domain.
 
-### Deploy Serverless Backend
+## Shutting Down (end of life)
 
-The `api/translate.ts` file can be deployed to:
-- Vercel Functions
-- Cloudflare Workers
-- Netlify Functions
-
-Set the environment variables in your hosting platform.
-
-## Tech Stack
-
-- **Frontend**: React 18 + TypeScript + Vite
-- **Styling**: Tailwind CSS + Design Tokens
-- **State**: Zustand
-- **AI Model**: Xiaomi MiMo V2.5
-- **Deployment**: GitHub Pages + Serverless Functions
-
-## Project Structure
-
-```
-silvite-translate-lab/
-├── api/                    # Serverless functions
-│   └── translate.ts        # Translation API endpoint
-├── public/                 # Static assets
-├── src/
-│   ├── api/               # API client
-│   ├── components/        # React components
-│   │   ├── Layout/        # Header
-│   │   ├── SourcePanel/   # Input area
-│   │   ├── Toolbar/       # Mode/settings bar
-│   │   └── TranslationPanel/ # Output area
-│   ├── demo/              # Demo samples
-│   ├── store/             # State management
-│   ├── App.tsx            # Main app
-│   └── main.tsx           # Entry point
-├── tokens.css             # Design system tokens
-└── DESIGN.md              # Design documentation
-```
+Set `SERVICE_ENABLED=false` in EdgeOne environment variables and redeploy —
+the API responds 503 with "experimental service is currently offline".
 
 ## License
 
