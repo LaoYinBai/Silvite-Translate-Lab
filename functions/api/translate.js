@@ -93,26 +93,69 @@ function parseModelContent(content, fallback) {
     }
   };
 
-  let parsed = tryParse(content);
-  if (!parsed) {
-    const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) parsed = tryParse(jsonMatch[1].trim());
+  // Models occasionally emit unescaped straight quotes inside JSON string
+  // values (e.g. 此处"银行"指河岸), which breaks JSON.parse. Walk the string
+  // and escape quotes that are clearly not structural closers.
+  const repairQuotes = (raw) => {
+    let out = '';
+    let inString = false;
+    for (let i = 0; i < raw.length; i++) {
+      const ch = raw[i];
+      if (inString && ch === '\\') {
+        out += ch + (raw[i + 1] || '');
+        i++;
+        continue;
+      }
+      if (ch === '"') {
+        if (!inString) {
+          inString = true;
+          out += ch;
+          continue;
+        }
+        let j = i + 1;
+        while (j < raw.length && /\s/.test(raw[j])) j++;
+        const next = raw[j];
+        if (next === ',' || next === '}' || next === ']' || next === ':' || next === undefined) {
+          inString = false;
+          out += ch;
+        } else {
+          out += '\\"';
+        }
+        continue;
+      }
+      out += ch;
+    }
+    return out;
+  };
+
+  const candidates = [content];
+
+  const fenceStart = content.indexOf('```');
+  if (fenceStart !== -1) {
+    const fenceEnd = content.lastIndexOf('```');
+    if (fenceEnd > fenceStart) {
+      candidates.push(content.slice(fenceStart + 3, fenceEnd).replace(/^json\s*/, '').trim());
+    }
   }
-  if (!parsed) {
-    const objectMatch = content.match(/\{[\s\S]*\}/);
-    if (objectMatch) parsed = tryParse(objectMatch[0]);
+
+  const objectMatch = content.match(/\{[\s\S]*\}/);
+  if (objectMatch) candidates.push(objectMatch[0]);
+
+  for (const candidate of candidates) {
+    let parsed = tryParse(candidate);
+    if (parsed) return parsed;
+    parsed = tryParse(repairQuotes(candidate));
+    if (parsed) return parsed;
   }
-  if (!parsed) {
-    parsed = {
-      source_language: fallback.sourceLanguage,
-      target_language: fallback.targetLanguage,
-      detected_style: fallback.detectedStyle,
-      translation: content.trim(),
-      segments: [],
-      notes: [],
-    };
-  }
-  return parsed;
+
+  return {
+    source_language: fallback.sourceLanguage,
+    target_language: fallback.targetLanguage,
+    detected_style: fallback.detectedStyle,
+    translation: content.trim(),
+    segments: [],
+    notes: [],
+  };
 }
 
 function normalizeLang(value, fallback) {

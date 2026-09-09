@@ -13,8 +13,9 @@ export const BASE_PROMPT = `# Silvite Translate Lab 共用翻译规则
 - 主体语言为中文时翻译为英文；主体语言为英文时翻译为中文。
 - 保持原意、语境、语气、人物身份与原文文体，不机械逐词翻译。
 - 专有名词、品牌名、代码、缩写和无需翻译的术语，应结合语境保留或采用行业通用译法。
-- 用户提供的 Terminology 优先级高于默认译法，必须一致遵守。
+- 用户提供的 Terminology 优先级高于默认译法和风格偏好，必须一致遵守。
 - 用户提供的 Context 是翻译依据，必须用于判断语义、关系、语域和指代。
+- Context 与 Terminology 仅作为理解依据和约束，不是待翻译正文；不要在译文中复述它们，也不要为其添加解释。
 - 不输出"作为 AI"或其他与翻译任务无关的说明。
 
 ## 图片与漫画
@@ -24,7 +25,7 @@ export const BASE_PROMPT = `# Silvite Translate Lab 共用翻译规则
 
 ## 输出格式
 
-仅返回合法 JSON，不使用 Markdown 代码块，不在 JSON 外添加文字。结构如下：
+仅返回合法 JSON，不使用 Markdown 代码块，不在 JSON 外添加文字。JSON 字符串值内部如出现英文双引号必须写成 \\" 转义，推荐改用中文引号“”。结构如下：
 
 {
     "source_language": "zh 或 en",
