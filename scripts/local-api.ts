@@ -29,19 +29,34 @@ const server = createServer(async (req, res) => {
       MIMO_API_KEY: process.env.MIMO_API_KEY,
       SERVICE_ENABLED: process.env.SERVICE_ENABLED,
       RATE_LIMIT: process.env.RATE_LIMIT,
+      RATE_LIMIT_WINDOW_MS: process.env.RATE_LIMIT_WINDOW_MS,
+      MAX_INPUT_LENGTH: process.env.MAX_INPUT_LENGTH,
+      MAX_COMPLETION_TOKENS: process.env.MAX_COMPLETION_TOKENS,
       ALLOWED_ORIGIN: process.env.ALLOWED_ORIGIN,
     },
   };
 
   try {
     const response = await onRequest(context);
-    const responseHeaders = {};
+    const responseHeaders: Record<string, string> = {};
     response.headers.forEach((value, key) => {
       responseHeaders[key] = value;
     });
-    const responseBody = response.body ? Buffer.from(await response.arrayBuffer()) : undefined;
+
+    // Stream the body incrementally (NDJSON streaming must reach the browser
+    // chunk by chunk, not as one buffered blob).
     res.writeHead(response.status, responseHeaders);
-    res.end(responseBody);
+    if (response.body) {
+      const reader = response.body.getReader();
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (!res.write(value)) {
+          await new Promise<void>((resolve) => res.once('drain', resolve));
+        }
+      }
+    }
+    res.end();
   } catch (error) {
     console.error('[local-api] Unhandled error:', error);
     if (!res.writableEnded) {
