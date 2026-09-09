@@ -1,38 +1,9 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { onRequest, buildComicTranslation, enforceReplyOrders } from '../functions/api/translate.js';
+import { mimoSseResponse, readNdjson, finalEventOf, makeRequest } from './helpers.mjs';
 
 const ENV = { MIMO_API_KEY: 'test-key', RATE_LIMIT: '100' };
-
-function makeRequest(body) {
-  return new Request('http://localhost:3001/api/translate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-}
-
-function fakeMimoResponse(content) {
-  const parts = [];
-  if (content) {
-    parts.push(JSON.stringify({ choices: [{ delta: { content }, finish_reason: null }] }));
-  }
-  parts.push(JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] }));
-  parts.push('[DONE]');
-  return new Response(parts.map((p) => `data: ${p}\n\n`).join(''), {
-    status: 200,
-    headers: { 'Content-Type': 'text/event-stream' },
-  });
-}
-
-async function readNdjson(response) {
-  const text = await response.text();
-  return text.split('\n').filter(Boolean).map((line) => JSON.parse(line));
-}
-
-function finalEventOf(events) {
-  return events.find((e) => e.type === 'final')?.result;
-}
 
 beforeEach(() => {
   globalThis.fetch = async () => {
@@ -112,7 +83,7 @@ test('T-extra: non-dialogue segments never merge, even with same label', () => {
 // translation passes through untouched.
 test('T6: comic without segments falls back to parsed translation', async () => {
   globalThis.fetch = async () =>
-    fakeMimoResponse(JSON.stringify({
+    mimoSseResponse(JSON.stringify({
       source_language: 'ja',
       target_language: 'zh',
       detected_style: 'comic',
@@ -136,7 +107,7 @@ test('T6: comic without segments falls back to parsed translation', async () => 
 test('comic + image + valid segments: translation is rebuilt deterministically', async () => {
   const modelTranslation = '女生：迟到了 男生：抱歉（平铺对白）';
   globalThis.fetch = async () =>
-    fakeMimoResponse(JSON.stringify({
+    mimoSseResponse(JSON.stringify({
       source_language: 'ja',
       target_language: 'zh',
       detected_style: 'comic',
@@ -164,7 +135,7 @@ test('comic + image + valid segments: translation is rebuilt deterministically',
 
 test('non-comic image mode keeps model free translation untouched', async () => {
   globalThis.fetch = async () =>
-    fakeMimoResponse(JSON.stringify({
+    mimoSseResponse(JSON.stringify({
       source_language: 'ja',
       target_language: 'zh',
       detected_style: 'natural',
@@ -188,7 +159,7 @@ test('comic image request carries the dedicated visual-narrative instruction', a
   let captured;
   globalThis.fetch = async (url, init) => {
     captured = JSON.parse(init.body);
-    return fakeMimoResponse(JSON.stringify({
+    return mimoSseResponse(JSON.stringify({
       source_language: 'ja',
       target_language: 'zh',
       detected_style: 'comic',
