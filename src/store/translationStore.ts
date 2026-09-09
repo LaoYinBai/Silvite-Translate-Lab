@@ -295,11 +295,15 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
           if (generation !== requestGeneration || controller.signal.aborted) return;
           set((s) => ({ streamingText: s.streamingText + text }));
         },
-        onReset: () => {
+        onReset: (reason) => {
           if (generation !== requestGeneration || controller.signal.aborted) return;
           set({
             streamingText: '',
-            streamStatus: '译文较长，正在重新生成完整结果…',
+            streamStatus: reason === 'stream_interrupted' || reason === 'transport_interrupted'
+              ? '连接中断，正在重新连接并生成完整结果…'
+              : reason === 'format_error'
+                ? '结果格式异常，正在重新生成完整结果…'
+                : '译文较长，正在重新生成完整结果…',
           });
         },
       }, controller.signal);

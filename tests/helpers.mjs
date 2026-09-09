@@ -1,4 +1,4 @@
-// Shared test helpers for the /api/translate NDJSON handler tests.
+// Shared test helpers for the /api/translate SSE handler tests.
 
 // Builds a fake MiMo SSE response carrying the given content as stream
 // deltas. Optional per-call behavior for retry scenarios.

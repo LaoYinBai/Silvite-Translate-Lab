@@ -306,7 +306,7 @@ export function composeTranslationPrompt(options = {}) {
 
 // Completion budget policy. Thinking is disabled for translation requests, so
 // these are pure output budgets. MiMo mimo-v2.5 accepts [1, 131072] and
-// defaults to 32768; we keep well below that unless env explicitly allows.
+// defaults to 32768; one truncated long-form retry may use up to 65536.
 const MAX_COMPLETION_TOKENS_CEILING = 65536;
 
 // Deterministic output budget from input shape. Not user-controllable; env
@@ -1001,6 +1001,14 @@ export async function onRequest(context) {
             }
 
             const { content, finishReason } = consumed;
+            if (!finishReason) {
+              if (attempt < MAX_ATTEMPTS - 1) {
+                prepareRetry('stream_interrupted', false);
+                continue;
+              }
+              throw { code: 'MODEL_STREAM_INTERRUPTED' };
+            }
+
             if (!content) {
               lastFailureCode = 'MODEL_EMPTY_RESPONSE';
               if (attempt < MAX_ATTEMPTS - 1) continue;

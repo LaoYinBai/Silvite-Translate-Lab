@@ -356,7 +356,7 @@ functions/api/prompts.mjs
 ### 翻译请求生命周期（Streaming）
 
 后端以 `stream: true` 调用 MiMo，消费其 SSE 后转换成 Silvite 自有的
-NDJSON 协议返回（`application/x-ndjson`）。前端永远看不到 MiMo 协议细节。
+SSE 事件协议返回（`text/event-stream`）。前端永远看不到 MiMo 协议细节。
 
 事件类型（一行一个 JSON）：
 
@@ -364,7 +364,7 @@ NDJSON 协议返回（`application/x-ndjson`）。前端永远看不到 MiMo 协
 | --- | --- |
 | `start` | `{ mode }` 请求已受理 |
 | `delta` | `{ text }` 临时译文增量（仅文本/图片模式；Comic 抑制） |
-| `reset` | `{ reason }` 首次尝试失败（如截断），临时文本作废 |
+| `reset` | `{ reason }` 首次尝试失败（截断、格式异常或断流），临时文本作废 |
 | `final` | `{ result }` 唯一权威结果（canonical） |
 | `error` | `{ code, message }` 分类失败，中文提示 |
 
@@ -378,14 +378,17 @@ NDJSON 协议返回（`application/x-ndjson`）。前端永远看不到 MiMo 协
 - **截断防护**：`finish_reason === 'length'` 或结构化 JSON 解析失败 → 绝不
   raw fallback；自动以加倍预算重试一次，仍失败则报
   `OUTPUT_TRUNCATED`（译文过长）。
+- **断流防护**：MiMo SSE 抛错或未携带终止原因就结束时，后端清空临时文本并
+  以原预算重试一次；浏览器到 Serverless 的连接中断时，前端同样清空临时文本并
+  自动重新请求一次。收到 `final` 后立即停止读取，避免连接尾部异常误伤完整结果。
 - **Thinking 关闭**：翻译请求显式 `thinking: { type: 'disabled' }`（MiMo
   V2.5 默认开启，会挤占输出预算并把 temperature 强制为 1.0）。
 - **输出预算**：`getCompletionBudget()` 按输入长度/图片/模式给出
-  4096–16384，`MAX_COMPLETION_TOKENS` 可覆盖（clamp [1024, 32768]），用户
+  4096–32768，`MAX_COMPLETION_TOKENS` 可覆盖（clamp [1024, 65536]），用户
   不可控。
-- **失败分类**：`MODEL_TRUNCATED_OUTPUT` / `MODEL_EMPTY_RESPONSE` /
+- **失败分类**：`OUTPUT_TRUNCATED` / `MODEL_EMPTY_RESPONSE` /
   `MODEL_FORMAT_FAILURE` / `MODEL_UPSTREAM_ERROR` / `MODEL_STREAM_INTERRUPTED`
-  等仅在内部日志与错误码中区分，用户只看到中文提示；自动重试全局最多 1 次。
+  等仅在内部日志与错误码中区分，用户只看到中文提示；后端与前端传输层各自最多自动重试 1 次。
 
 ---
 

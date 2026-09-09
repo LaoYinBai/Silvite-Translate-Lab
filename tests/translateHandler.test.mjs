@@ -368,6 +368,40 @@ test('two stream interruptions map to interrupted error event', async () => {
   assert.ok(!events.some((e) => e.type === 'final'));
 });
 
+test('stream EOF without finish reason retries with the same budget', async () => {
+  let calls = 0;
+  const budgets = [];
+  globalThis.fetch = async (url, init) => {
+    calls++;
+    budgets.push(JSON.parse(init.body).max_completion_tokens);
+    if (calls === 2) {
+      return mimoSseResponse(JSON.stringify({
+        source_language: 'en',
+        target_language: 'zh',
+        translation: '完整重试译文',
+        segments: [],
+        notes: [],
+      }));
+    }
+
+    const partial = { choices: [{ delta: { content: '{"translation":"半篇译文' }, finish_reason: null }] };
+    const body = `data: ${JSON.stringify(partial)}\n\ndata: [DONE]\n\n`;
+    return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+  };
+
+  const response = await onRequest({
+    request: makeRequest({ text: 'Hello', mode: 'auto' }),
+    env: ENV,
+  });
+  const events = await readSseEvents(response);
+
+  assert.equal(calls, 2);
+  assert.deepEqual(budgets, [4096, 4096]);
+  assert.deepEqual(events.map((event) => event.type), ['start', 'delta', 'reset', 'delta', 'final']);
+  assert.equal(events[2].reason, 'stream_interrupted');
+  assert.equal(finalEventOf(events).translation, '完整重试译文');
+});
+
 test('retry emits reset after streamed deltas, then fresh deltas and final', async () => {
   let calls = 0;
   globalThis.fetch = async () => {
