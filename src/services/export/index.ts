@@ -1,17 +1,15 @@
 import { exportToDocx } from './exportDocx';
-import { exportPrintPdf } from './exportPrintPdf';
+import { exportToPdf } from './exportPdf';
 import type { TranslationExportData, ExportFormat } from './types';
 
 export type { TranslationExportData, ExportFormat };
 
-export function exportTranslation(data: TranslationExportData, format: ExportFormat): void {
+export async function exportTranslation(data: TranslationExportData, format: ExportFormat): Promise<void> {
   switch (format) {
     case 'pdf':
-      exportPrintPdf(data);
-      return;
+      return exportToPdf(data);
     case 'docx':
-      void exportToDocx(data);
-      return;
+      return exportToDocx(data);
     default:
       throw new Error(`Unsupported export format: ${format}`);
   }
