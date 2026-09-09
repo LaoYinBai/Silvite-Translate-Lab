@@ -137,6 +137,37 @@ test('invalid model JSON does not escape to a 500', async () => {
   assert.equal(payload.source_language, 'en');
 });
 
+test('unescaped quotes in model JSON get repaired', async () => {
+  const brokenJson = [
+    '{',
+    '  "source_language": "zh",',
+    '  "target_language": "en",',
+    '  "detected_style": "natural",',
+    '  "translation": "We sat on the riverbank.",',
+    '  "segments": [],',
+    '  "notes": [',
+    '    {',
+    '      "source": "银行",',
+    '      "translation": "riverbank",',
+    '      "reason": "此处"银行"指河岸，而非金融机构"',
+    '    }',
+    '  ]',
+    '}',
+  ].join('\n');
+  globalThis.fetch = async () => fakeMimoResponse('```json\n' + brokenJson + '\n```');
+
+  const response = await onRequest({
+    request: makeRequest({ text: '我们坐在河边的银行上看夕阳。', mode: 'auto' }),
+    env: ENV,
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.translation, 'We sat on the riverbank.');
+  assert.equal(payload.notes.length, 1);
+  assert.match(payload.notes[0].reason, /指河岸/);
+});
+
 test('model reporting unknown language gets normalized', async () => {
   globalThis.fetch = async () => fakeMimoResponse(JSON.stringify({
     source_language: 'unknown',

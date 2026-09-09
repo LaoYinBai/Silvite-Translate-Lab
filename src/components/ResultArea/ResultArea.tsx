@@ -61,6 +61,7 @@ function ErrorState({ message }: { message: string }) {
 }
 
 function ResultCard({ result }: { result: any }) {
+  const { showTranslationNotes, toggleShowTranslationNotes } = useTranslationStore();
   const [copySuccess, setCopySuccess] = useState(false);
   
   const handleCopy = async () => {
@@ -139,6 +140,25 @@ function ResultCard({ result }: { result: any }) {
             重新翻译
           </button>
           
+          <button
+            type="button"
+            onClick={toggleShowTranslationNotes}
+            aria-pressed={showTranslationNotes}
+            className={`btn btn-secondary h-[38px] ${showTranslationNotes ? 'bg-[#e6f4ff] border-[#1677ff] text-[#1677ff]' : ''}`}
+            title="显示或隐藏翻译说明（不触发重新翻译）"
+          >
+            翻译说明
+            <span
+              className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${
+                showTranslationNotes
+                  ? 'bg-[#1677ff] text-white'
+                  : 'bg-[#f0f0f0] text-[#888888]'
+              }`}
+            >
+              {showTranslationNotes ? 'ON' : 'OFF'}
+            </span>
+          </button>
+          
           <ExportMenu />
         </div>
       </div>
@@ -184,25 +204,31 @@ function ResultCard({ result }: { result: any }) {
         </div>
       )}
       
-      {/* Notes */}
-      {result.notes && result.notes.length > 0 && (
+      {/* Notes - display controlled by the toggle; data always kept in state */}
+      {showTranslationNotes && (
         <div className="mx-7 mb-7">
           <h4 className="text-[13px] font-semibold text-[#888888] uppercase tracking-wider mb-4">
             翻译说明
           </h4>
-          <div className="space-y-3">
-            {result.notes.map((note: any, index: number) => (
-              <div key={index} className="flex items-start gap-3 text-[14px]">
-                <span className="text-[#888888] mt-1">•</span>
-                <span className="text-[#555555]">
-                  <span className="font-medium text-[#1a1a1a]">{note.source}</span>
-                  {' → '}
-                  <span className="font-medium text-[#1a1a1a]">{note.translation}</span>
-                  {note.reason && ` — ${note.reason}`}
-                </span>
-              </div>
-            ))}
-          </div>
+          {result.notes && result.notes.length > 0 ? (
+            <div className="space-y-3">
+              {result.notes.map((note: any, index: number) => (
+                <div key={index} className="flex items-start gap-3 text-[14px]">
+                  <span className="text-[#888888] mt-1">•</span>
+                  <span className="text-[#555555]">
+                    <span className="font-medium text-[#1a1a1a]">{note.source}</span>
+                    {' → '}
+                    <span className="font-medium text-[#1a1a1a]">{note.translation}</span>
+                    {note.reason && ` — ${note.reason}`}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-[14px] text-[#888888]">
+              本次翻译没有需要特别说明的内容
+            </p>
+          )}
         </div>
       )}
     </div>

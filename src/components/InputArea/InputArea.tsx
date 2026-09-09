@@ -70,10 +70,17 @@ export function InputArea() {
     setInputMode,
     mode,
     setMode,
+    context,
+    setContext,
+    terminology,
+    setTerminology,
+    preserveNames,
+    setPreserveNames,
     isLoading 
   } = useTranslationStore();
   
   const [isDragOver, setIsDragOver] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -284,6 +291,26 @@ export function InputArea() {
             >
               清空
             </button>
+            {/* Advanced toggle */}
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              aria-expanded={showAdvanced}
+              className={`flex items-center gap-1.5 h-[36px] px-3 text-[13px] rounded-lg transition-colors ${
+                showAdvanced
+                  ? 'bg-[#e6f4ff] text-[#1677ff] font-medium'
+                  : 'text-[#666666] hover:text-[#1a1a1a] hover:bg-[#f5f5f5]'
+              }`}
+            >
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M8 10a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" strokeWidth="1.4"/>
+                <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.4"/>
+              </svg>
+              高级
+              {(context || terminology) && !showAdvanced && (
+                <span className="w-1.5 h-1.5 rounded-full bg-[#1677ff]" aria-hidden="true" />
+              )}
+            </button>
           </div>
           
           {/* Right: Translate button */}
@@ -310,6 +337,51 @@ export function InputArea() {
             )}
           </button>
         </div>
+        
+        {/* Advanced panel: context & terminology constraints */}
+        {showAdvanced && (
+          <div className="px-5 pb-4 border-t border-[#f0f0f0] pt-4 bg-[#fafafa] rounded-b-xl">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="context-input" className="block text-[12px] font-medium text-[#555555] mb-1.5">
+                  上下文 / Context
+                </label>
+                <textarea
+                  id="context-input"
+                  value={context}
+                  onChange={(e) => setContext(e.target.value)}
+                  placeholder="告诉模型这段文字的场景，例：这是科技产品官网文案"
+                  rows={2}
+                  className="w-full px-3 py-2 text-[13px] leading-[1.6] bg-white border border-[#e0e0e0] rounded-lg outline-none focus:border-[#1677ff] transition-colors placeholder:text-[#b0b0b0] resize-none"
+                />
+              </div>
+              
+              <div>
+                <label htmlFor="terminology-input" className="block text-[12px] font-medium text-[#555555] mb-1.5">
+                  术语 / Terminology
+                </label>
+                <textarea
+                  id="terminology-input"
+                  value={terminology}
+                  onChange={(e) => setTerminology(e.target.value)}
+                  placeholder={'每行一条，例：\n沈理 -> Shenyang Ligong University\nMoDi Connect -> 保持原样'}
+                  rows={2}
+                  className="w-full px-3 py-2 text-[13px] leading-[1.6] bg-white border border-[#e0e0e0] rounded-lg outline-none focus:border-[#1677ff] transition-colors placeholder:text-[#b0b0b0] resize-none"
+                />
+              </div>
+            </div>
+            
+            <label className="mt-3 inline-flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={preserveNames}
+                onChange={(e) => setPreserveNames(e.target.checked)}
+                className="w-4 h-4 rounded border-[#d0d0d0] text-[#1677ff] focus:ring-[#1677ff] cursor-pointer"
+              />
+              <span className="text-[13px] text-[#555555]">保留专有名词、品牌名与人名</span>
+            </label>
+          </div>
+        )}
       </div>
       
       {/* Drag overlay */}
