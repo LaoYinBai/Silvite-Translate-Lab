@@ -79,7 +79,7 @@ function App() {
               </svg>
               样本
             </button>
-            <h2 className="text-[17px] sm:text-[19px] font-semibold text-[#1a1a1a]">翻译</h2>
+            <h2 className="text-[17px] sm:text-[19px] font-semibold text-[#1a1a1a]">Translate Lab</h2>
             <span className="text-[12px] sm:text-[13px] text-[#888888] bg-[#f5f5f5] px-3 py-1 rounded-full">
               实验版
             </span>
