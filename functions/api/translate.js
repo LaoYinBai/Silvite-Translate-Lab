@@ -178,6 +178,7 @@ export function buildComicTranslation(segments) {
     .map((block) => `【${block.label}】\n${block.lines.join('\n')}`)
     .join('\n\n');
 }
+
 // EdgeOne Pages edge runtime: V8 isolate, Web APIs only. The per-isolate Map
 // gives per-instance rate limiting, sufficient for this short-lived demo.
 const rateLimitMap = new Map();
@@ -526,7 +527,6 @@ const FAILURE_MESSAGES = {
   MODEL_FORMAT_FAILURE: '翻译服务返回格式异常，请重试。',
   MODEL_UPSTREAM_ERROR: '翻译服务暂时不可用，请稍后重试。',
   MODEL_STREAM_INTERRUPTED: '翻译连接中断，请重试。',
-  MODEL_PARSE_FAILURE: '翻译服务返回格式异常，请重试。',
 };
 
 function failureEvent(code) {
@@ -669,11 +669,13 @@ export function createStreamingTranslationExtractor() {
     // text to stream (may be '').
     feed(chunk) {
       if (state === 'done' || state === 'dead') return '';
+      let next = chunk;
+
       if (state === 'sniff') {
         // Decide the mode from the leading shape: '{' -> structured JSON,
         // '```json' fence -> strip the fence line then re-decide, anything
         // else -> raw plain text (the legacy fallback).
-        sniffBuf += chunk;
+        sniffBuf += next;
         const trimmed = sniffBuf.trimStart();
         if (!trimmed) { sniffBuf = ''; return ''; }
 
@@ -682,31 +684,36 @@ export function createStreamingTranslationExtractor() {
           // waiting and treat as raw if it grows absurdly long).
           const newlineAt = trimmed.indexOf('\n');
           if (newlineAt === -1) {
-            if (trimmed.length > 64) { state = 'raw'; chunk = trimmed; sniffBuf = ''; }
-            else { return ''; }
+            if (trimmed.length > 64) {
+              state = 'raw';
+              next = trimmed;
+              sniffBuf = '';
+            } else {
+              return ''; // keep accumulating: fence line not complete yet
+            }
           } else {
             const firstLine = trimmed.slice(0, newlineAt).trim();
             const rest = trimmed.slice(newlineAt + 1).trimStart();
             if (/^```/.test(firstLine)) {
               if (!rest) { sniffBuf = ''; return ''; }
               state = rest[0] === '{' ? 'find_key' : 'raw';
-              chunk = rest;
-              sniffBuf = '';
+              next = rest;
             } else {
               state = 'raw';
-              chunk = trimmed;
-              sniffBuf = '';
+              next = trimmed;
             }
+            sniffBuf = '';
           }
         } else {
           state = trimmed[0] === '{' ? 'find_key' : 'raw';
-          chunk = trimmed;
+          next = trimmed;
           sniffBuf = '';
         }
       }
-      if (state === 'raw') return chunk;
-      if (state === 'in_string') return processInStringChunk(chunk);
-      return processStructuralChunk(chunk);
+
+      if (state === 'raw') return next;
+      if (state === 'in_string') return processInStringChunk(next);
+      return processStructuralChunk(next);
     },
 
     // Fresh attempt: everything streamed so far is void.
@@ -929,6 +936,17 @@ export async function onRequest(context) {
           let budget = initialBudget;
           let lastFailureCode = null;
 
+          // Shared retry preparation: void any streamed provisional text,
+          // reset the extractor, optionally double the output budget.
+          const prepareRetry = (reason, doubleBudget) => {
+            if (emittedAny) {
+              send({ type: 'reset', reason });
+              emittedAny = false;
+            }
+            extractor.reset();
+            if (doubleBudget) budget = getRetryCompletionBudget(budget);
+          };
+
           for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
             const mimoResponse = await fetch(MIMO_API_URL, {
               method: 'POST',
@@ -986,12 +1004,7 @@ export async function onRequest(context) {
               // Truncated output: never usable, never raw-fallback.
               lastFailureCode = 'OUTPUT_TRUNCATED';
               if (attempt < MAX_ATTEMPTS - 1) {
-                if (emittedAny) {
-                  send({ type: 'reset', reason: 'output_truncated' });
-                  emittedAny = false;
-                }
-                extractor.reset();
-                budget = getRetryCompletionBudget(budget);
+                prepareRetry('output_truncated', true);
                 continue;
               }
               throw { code: 'OUTPUT_TRUNCATED' };
@@ -1014,20 +1027,14 @@ export async function onRequest(context) {
             // Structured-looking output that failed to parse: incomplete or
             // malformed protocol data - never shown to the user, never
             // raw-fallback. Retry once, then give up.
-            lastFailureCode = parsed.reason === 'truncated_json' ? 'OUTPUT_TRUNCATED' : 'MODEL_FORMAT_FAILURE';
+            const truncated = parsed.reason === 'truncated_json';
+            lastFailureCode = truncated ? 'OUTPUT_TRUNCATED' : 'MODEL_FORMAT_FAILURE';
             if (attempt < MAX_ATTEMPTS - 1) {
-              if (emittedAny) {
-                send({ type: 'reset', reason: lastFailureCode === 'OUTPUT_TRUNCATED' ? 'output_truncated' : 'format_error' });
-                emittedAny = false;
-              }
-              extractor.reset();
-              if (parsed.reason === 'truncated_json') budget = getRetryCompletionBudget(budget);
+              prepareRetry(truncated ? 'output_truncated' : 'format_error', truncated);
               continue;
             }
             throw { code: lastFailureCode };
           }
-
-          throw { code: lastFailureCode || 'MODEL_UPSTREAM_ERROR' };
         } catch (error) {
           console.error('Translation failure:', error?.code || error);
           try {
