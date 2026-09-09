@@ -87,9 +87,9 @@ function ResultCard({ result }: { result: any }) {
   };
   
   return (
-    <div className="bg-white rounded-xl border border-[#e0e0e0] overflow-hidden">
+    <div className="bg-white rounded-xl border border-[#e0e0e0]">
       {/* Header */}
-      <div className="flex items-center justify-between px-7 py-5 bg-[#fafafa] border-b border-[#f0f0f0]">
+      <div className="flex items-center justify-between px-7 py-5 bg-[#fafafa] border-b border-[#f0f0f0] rounded-t-xl">
         <div className="flex items-center gap-3">
           <span className="text-[15px] font-medium text-[#1a1a1a]">
             {result.sourceLanguage === 'zh' ? '中文' : '英文'}
