@@ -149,9 +149,9 @@ export async function onRequest(context) {
     });
   }
 
-  // Demo fallback key per project owner's request; set the MIMO_API_KEY
-  // environment variable in EdgeOne to override it.
-  const apiKey = env.MIMO_API_KEY || 'REDACTED_MIMO_API_KEY';
+  // The MiMo key comes exclusively from the EdgeOne environment variable
+  // MIMO_API_KEY; it never ships in source code or the frontend bundle.
+  const apiKey = env.MIMO_API_KEY;
   if (!apiKey) {
     return new Response(JSON.stringify({ error: 'API key not configured' }), { status: 500, headers });
   }
