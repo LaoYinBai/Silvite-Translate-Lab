@@ -2351,8 +2351,58 @@ API 网关负责处理认证、限流和请求路由。
 
 ---
 
-*文档版本: 1.2.0 | 最后更新: 2026-09-08*
+## 十八、翻译请求生命周期（Streaming，2026-09-09）
 
-### 变更记录
-- v1.2.0 (2026-09-08): 新增第十章「导出 PDF / Word 功能」，包含完整的技术方案、中文字体处理、代码实现和 UI 集成
-- v1.1.0 (2026-09-08): 新增第九章「图片上传交互需求」，补充 Drag & Drop、剪贴板粘贴、图片预览等详细交互规范
+### 18.1 链路
+
+```text
+Frontend (translateStream)
+   → POST /api/translate
+   → EdgeOne Function（stream:true 调 MiMo）
+   → 消费 MiMo SSE（createSseEventParser / consumeMimoSse）
+   → 增量 translation extractor（只解码 "translation" 字段值）
+   → Silvite NDJSON（start / delta / reset / final / error）
+   → Store provisional text（体验层）
+   → final 事件 = canonical result（唯一真相，整卡覆盖）
+```
+
+### 18.2 硬规则（改代码前必读）
+
+1. **任何结构化 JSON 片段绝不能作为译文展示**：`parseModelContent` 返回
+   `{ok:false, reason}` 时只能 retry 或 error；纯文本响应才允许 raw fallback。
+2. **`finish_reason` 是第一手失败信号**：`length` → `OUTPUT_TRUNCATED`，不得
+   把内容当成功。
+3. **自动重试全局最多 1 次**：截断重试预算翻倍（clamp 32768）；空响应同预算
+   重试；上游 4xx/5xx 与流中断不重试。
+4. **Thinking 显式关闭**：`thinking: {type:'disabled'}`（官方参数；默认
+   enabled 会挤占 completion 预算并把 temperature 强制为 1.0）。
+5. **Comic 不流 delta**：模型自由译文顺序不可靠，最终译文必须由
+   `enforceReplyOrders() + buildComicTranslation()` 确定性重建；delta 全程抑制。
+6. **竞态防护**：AbortController + request generation id；新请求/reset/demo
+   切换会 abort 旧流，旧 chunk 与旧 final 永远污染不了新 session。
+7. **Provider 细节只进服务端日志**：NDJSON 只含 Silvite 自有事件。
+
+### 18.3 失败分类（内部代码 → 用户文案）
+
+| code | 用户文案 |
+| --- | --- |
+| OUTPUT_TRUNCATED | 译文过长，模型未能完整返回结果。请缩短输入后重试。 |
+| MODEL_EMPTY_RESPONSE | 翻译服务返回为空，请稍后重试。 |
+| MODEL_FORMAT_FAILURE | 翻译服务返回格式异常，请重试。 |
+| MODEL_UPSTREAM_ERROR | 翻译服务暂时不可用，请稍后重试。 |
+| MODEL_STREAM_INTERRUPTED | 翻译连接中断，请重试。 |
+
+### 18.4 环境变量（新增）
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `MAX_COMPLETION_TOKENS` | 按输入 4096–16384 | 输出预算覆盖，clamp [1024, 32768] |
+
+---
+
+*文档版本: 1.3.0 | 最后更新: 2026-09-09*
+
+### 更新记录
+- v1.3.0 (2026-09-09): 第十八章「翻译请求生命周期（Streaming）」——MiMo SSE 消费、NDJSON 协议、截断防护与自动重试、thinking 关闭、Comic 抑制流式、竞态防护
+- v1.2.0 (2026-09-08): 新增第十章「导出 PDF / Word 功能」、图片上传交互、详细工程实现和 UI 规范
+- v1.1.0 (2026-09-08): 新增第九章「图片上传（增强）」，包括 Drag & Drop、剪贴板粘贴、图片预览等详细规范

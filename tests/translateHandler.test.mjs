@@ -1,6 +1,6 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { onRequest, composeTranslationPrompt } from '../functions/api/translate.js';
+import { onRequest } from '../functions/api/translate.js';
 
 const MIMO_URL = 'https://api.xiaomimimo.com/v1/chat/completions';
 const ENV = { MIMO_API_KEY: 'test-key', RATE_LIMIT: '10' };
