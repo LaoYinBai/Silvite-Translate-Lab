@@ -271,12 +271,23 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
     }
   },
   
+  // Full new-session reset (single implementation behind every "新建翻译"
+  // entry). Clears the whole translation session: input, image, settings
+  // (incl. anything a demo sample filled in), result/notes and demo state.
+  // Deliberately KEEPS global app state: theme, service status.
   reset: () => set({
     inputText: '',
     inputImage: null,
+    inputMode: 'text',
     imageSource: null,
+    mode: 'auto',
+    context: '',
+    terminology: '',
+    preserveNames: true,
+    showTranslationNotes: false,
     result: null,
     error: null,
+    isLoading: false,
     isDemoMode: false,
     activeDemoId: null,
     previewImage: null,
