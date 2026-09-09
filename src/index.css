@@ -272,3 +272,69 @@ textarea, input[type="text"] {
 .silvite-sidebar__meta {
   padding: 16px 4px 0;
 }
+
+/* ---------- Dark theme ----------
+   Layer 1: .dark overrides the @theme custom properties, which restyles
+   every var()-based rule (buttons, segmented control, body, scrollbar...).
+   Layer 2: the arbitrary-value utilities hard-coded across components are
+   overridden via their escaped class names, so the whole app flips without
+   touching component files. Toggle: <html class="dark"> (ThemeButton). */
+
+.dark {
+  --color-bg: #17181a;
+  --color-bg-white: #202124;
+  --color-bg-hover: #2a2c2f;
+  --color-bg-active: #323538;
+  --color-bg-subtle: #1e2023;
+  --color-text: #e8eaed;
+  --color-text-secondary: #b6b8bb;
+  --color-text-tertiary: #8a8d90;
+  --color-text-placeholder: #6b6e72;
+  --color-border: #3a3d41;
+  --color-border-light: #2f3236;
+  --color-accent-bg: #16293f;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #4a4d51;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #5c6064;
+}
+
+/* Surfaces */
+.dark .bg-white { background-color: #202124; }
+.dark .bg-\[\#f6f7f9\], .dark .bg-\[\#f7f8fa\] { background-color: #1e2023; }
+.dark .bg-\[\#fafafa\] { background-color: #1b1c1e; }
+.dark .bg-\[\#f0f0f0\], .dark .bg-\[\#f5f5f5\] { background-color: #2a2c2f; }
+.dark .bg-\[\#e0e0e0\] { background-color: #3a3d41; }
+.dark .bg-\[\#e6f4ff\] { background-color: #16293f; }
+.dark .bg-\[\#fff2f0\] { background-color: #3a2422; }
+.dark .hover\:bg-\[\#f5f5f5\]:hover, .dark .hover\:bg-\[\#eaecef\]:hover { background-color: #2a2c2f; }
+.dark .hover\:bg-\[\#f7fbff\]:hover { background-color: #1a2633; }
+
+/* Borders (accent/error borders stay as-is: readable on dark) */
+.dark .border-\[\#e0e0e0\], .dark .border-\[\#e8e8e8\], .dark .border-\[\#e4e6ea\],
+.dark .border-\[\#f0f0f0\], .dark .border-\[\#eaecef\], .dark .border-\[\#d9d9d9\],
+.dark .border-\[\#d0d0d0\] { border-color: #3a3d41; }
+.dark .hover\:border-\[\#d0d0d0\]:hover { border-color: #4a4d51; }
+
+/* Text */
+.dark .text-\[\#1a1a1a\] { color: #e8eaed; }
+.dark .text-\[\#555555\] { color: #b6b8bb; }
+.dark .text-\[\#666666\], .dark .text-\[\#777777\] { color: #a5a8ab; }
+.dark .text-\[\#888888\] { color: #8a8d90; }
+.dark .text-\[\#999999\] { color: #7c8083; }
+.dark .placeholder\:text-\[\#b0b0b0\]::placeholder { color: #6b6e72; }
+.dark .text-\[\#1677ff\] { color: #6aa8ff; }
+.dark .text-\[\#ff4d4f\] { color: #ff6b6d; }
+.dark .hover\:text-\[\#555555\]:hover { color: #b6b8bb; }
+.dark .hover\:text-\[\#1a1a1a\]:hover { color: #e8eaed; }
+.dark .hover\:text-\[\#d9363e\]:hover { color: #ff6b6d; }
+
+/* Literal whites inside custom component classes */
+.dark .btn-secondary { background: #202124; border-color: #3a3d41; }
+.dark .btn-secondary:hover:not(:disabled) { border-color: #4a4d51; }
+.dark .segmented-control-item.active { background: #323538; }
+.dark .segmented-control-item:hover:not(:disabled) { background: rgba(255, 255, 255, 0.06); }
