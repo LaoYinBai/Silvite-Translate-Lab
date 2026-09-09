@@ -1,8 +1,7 @@
-﻿import { test, beforeEach } from 'node:test';
+import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { onRequest, buildComicTranslation, enforceReplyOrders } from '../functions/api/translate.js';
 
-const MIMO_URL = 'https://api.xiaomimimo.com/v1/chat/completions';
 const ENV = { MIMO_API_KEY: 'test-key', RATE_LIMIT: '100' };
 
 function makeRequest(body) {
@@ -34,8 +33,6 @@ async function readNdjson(response) {
 function finalEventOf(events) {
   return events.find((e) => e.type === 'final')?.result;
 }
-
-const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   globalThis.fetch = async () => {

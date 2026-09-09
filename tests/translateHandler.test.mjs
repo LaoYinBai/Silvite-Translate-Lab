@@ -43,8 +43,6 @@ function finalEventOf(events) {
   return events.find((e) => e.type === 'final')?.result;
 }
 
-const originalFetch = globalThis.fetch;
-
 beforeEach(() => {
   globalThis.fetch = async () => {
     throw new Error('fetch should be stubbed per-test');

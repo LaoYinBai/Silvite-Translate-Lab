@@ -1,5 +1,4 @@
 import sharp from 'sharp';
-import fs from 'node:fs';
 import path from 'node:path';
 
 const SVG = path.resolve('public/icons/app-icon.svg');
