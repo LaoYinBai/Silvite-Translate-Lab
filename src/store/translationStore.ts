@@ -36,6 +36,10 @@ export interface TranslationSegment {
   type: TranslationSegmentType;
   source: string;
   translation: string;
+  // Comic-mode extras (optional; plain image/text results omit them):
+  // which panel the text belongs to and who is speaking.
+  panel?: number;
+  speaker?: string | null;
 }
 
 export interface TranslationNote {
