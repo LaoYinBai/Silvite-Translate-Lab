@@ -851,7 +851,7 @@ export async function onRequest(context) {
 
   const rateLimit = Number.parseInt(env.RATE_LIMIT || '10', 10);
   const rateLimitWindow = Number.parseInt(env.RATE_LIMIT_WINDOW_MS || '60000', 10);
-  const maxInputLength = Number.parseInt(env.MAX_INPUT_LENGTH || '5000', 10);
+  const maxInputLength = Number.parseInt(env.MAX_INPUT_LENGTH || '20000', 10);
   const ip = request.headers.get('x-forwarded-for') || request.headers.get('eo-geo') || 'unknown';
   if (!checkRateLimit(ip, rateLimit, rateLimitWindow)) {
     return new Response(JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }), {
