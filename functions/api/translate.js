@@ -307,7 +307,7 @@ export function composeTranslationPrompt(options = {}) {
 // Completion budget policy. Thinking is disabled for translation requests, so
 // these are pure output budgets. MiMo mimo-v2.5 accepts [1, 131072] and
 // defaults to 32768; we keep well below that unless env explicitly allows.
-const MAX_COMPLETION_TOKENS_CEILING = 32768;
+const MAX_COMPLETION_TOKENS_CEILING = 65536;
 
 // Deterministic output budget from input shape. Not user-controllable; env
 // override (MAX_COMPLETION_TOKENS) is clamped.
@@ -315,7 +315,8 @@ export function getCompletionBudget({ textLength = 0, hasImage = false, mode = '
   let budget;
   if (textLength <= 800) budget = 4096;
   else if (textLength <= 2500) budget = 8192;
-  else budget = 16384;
+  else if (textLength <= 8000) budget = 16384;
+  else budget = 32768;
 
   if (hasImage) budget = Math.max(budget, 8192);
   if (hasImage && mode === 'comic') budget = Math.max(budget, 16384);
@@ -824,8 +825,10 @@ function buildCanonicalResult({ model, fallback, mode, imageDataUrl }) {
     // detected_text is only meaningful for image mode; in text mode the
     // user's input IS the source, so any model-invented "source" is dropped.
     detected_text: imageDataUrl ? (model.detected_text || null) : null,
-    // Segments pass through untouched so panel/order/speaker survive.
-    segments: Array.isArray(model.segments) ? model.segments : [],
+    // Segments pass through untouched in image mode so panel/order/speaker survive.
+    segments: imageDataUrl && Array.isArray(model.segments)
+      ? model.segments
+      : [],
     notes: Array.isArray(model.notes) ? model.notes : [],
   };
 }
