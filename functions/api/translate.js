@@ -28,6 +28,78 @@ export function normalizeTranslationMode(mode) {
   return typeof mode === 'string' && SUPPORTED_TRANSLATION_MODES.includes(mode) ? mode : 'auto';
 }
 
+// Parses user terminology lines into structured hard constraints.
+// Supported forms per line:
+//   源 -> 目标        fixed translation
+//   源 = 目标          fixed translation (also fullwidth ＝)
+//   源 -> KEEP         preserve as-is (also "保持原样", "不翻译", "keep")
+// Unparsable lines are passed through as free-form terminology notes.
+export function buildTerminologySection(terminology) {
+  if (typeof terminology !== 'string' || !terminology.trim()) return null;
+
+  const keepList = [];
+  const mappingList = [];
+  const freeText = [];
+
+  for (const rawLine of terminology.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    const parts = line.split(/\s*(?:->|=>|→|=|＝)\s*/);
+    if (parts.length === 2 && parts[0].trim() && parts[1].trim()) {
+      const source = parts[0].trim();
+      const target = parts[1].trim();
+      if (/^(keep|保持原样|保持原文|不翻译|保留原文)$/i.test(target)) {
+        keepList.push(source);
+      } else {
+        mappingList.push({ source, target });
+      }
+    } else {
+      freeText.push(line);
+    }
+  }
+
+  if (keepList.length === 0 && mappingList.length === 0 && freeText.length === 0) {
+    return null;
+  }
+
+  const lines = [
+    '# 用户术语约束（Terminology，最高优先级硬约束）',
+    '',
+    '以下约束优先级最高，高于任何风格指令与专有名词处理设置，必须严格遵守：',
+  ];
+
+  if (mappingList.length > 0) {
+    lines.push('', '固定译法（该词出现且确实指此事物时，必须使用指定译法）：');
+    for (const { source, target } of mappingList) {
+      lines.push(`- ${source} → ${target}`);
+    }
+  }
+
+  if (keepList.length > 0) {
+    lines.push('', '保持原文（不要翻译、不要音译、不要加注）：');
+    for (const term of keepList) {
+      lines.push(`- ${term}`);
+    }
+  }
+
+  if (freeText.length > 0) {
+    lines.push('', '其他术语说明：');
+    for (const note of freeText) {
+      lines.push(`- ${note}`);
+    }
+  }
+
+  lines.push(
+    '',
+    '使用规则：',
+    '- 只约束原文中真正对应的位置；结合 Context 与词义判断该处是否指术语所指事物。同形词表示其他含义时不得套用（例如术语含"苹果=Apple 公司"时，表示水果的"苹果"仍是 apple）。',
+    '- 若术语约束与用户 Context 描述冲突：译名形式以术语为准，Context 继续提供其余语义信息。'
+  );
+
+  return lines.join('\n');
+}
+
 export function composeTranslationPrompt(options = {}) {
   const requestedMode = normalizeTranslationMode(options.mode);
   let effectiveMode = requestedMode;
@@ -37,25 +109,38 @@ export function composeTranslationPrompt(options = {}) {
     modePrompt = STYLE_PROMPTS[requestedMode];
   }
 
+  // Order mirrors the declared priority: base rules → mode style →
+  // terminology (hard constraints) → context → proper-name handling.
   const sections = [BASE_PROMPT, modePrompt];
 
-  if (typeof options.context === 'string' && options.context.trim()) {
-    sections.push(`# 用户上下文（Context）\n${options.context.trim()}`);
+  const terminologySection = buildTerminologySection(options.terminology);
+  if (terminologySection) {
+    sections.push(terminologySection);
   }
 
-  if (typeof options.terminology === 'string' && options.terminology.trim()) {
-    sections.push(`# 用户术语（Terminology，最高优先级）\n${options.terminology.trim()}`);
+  if (typeof options.context === 'string' && options.context.trim()) {
+    sections.push(
+      `# 用户上下文（Context，仅用于消歧，不是待翻译正文）\n${options.context.trim()}`
+    );
   }
 
   if (options.preserveNames === true) {
-    sections.push('保留符合语境的专有名词、品牌名、人名、地名、代码和缩写。');
+    sections.push(
+      '# 专有名词处理（Preserve Proper Names：开启）\n' +
+        '品牌名、产品名、人名、项目名、型号、缩写与已知商标：优先保留原文，或采用业界正式译名；不确定正式译名时保留原文，不要自行创造。此设置不影响 Terminology 约束（术语始终更优先）。'
+    );
+  } else if (options.preserveNames === false) {
+    sections.push(
+      '# 专有名词处理（Preserve Proper Names：关闭）\n' +
+        '允许按目标语言习惯正常处理人名等内容，但品牌与产品名在没有可靠官方译名依据时仍不得随意意译，不确定时保留原文。Terminology 约束不受此设置影响，必须始终遵守。'
+    );
   }
 
   if (options.explainTranslation === false) {
-    sections.push('除非存在关键且不直观的翻译决策，否则 notes 必须返回空数组。');
-  } else if (options.explainTranslation === true) {
-    sections.push('对不直观但重要的翻译选择，在 notes 中给出简短说明。');
+    sections.push('notes 尽量返回空数组，除非存在关键且不直观的翻译决策。');
   }
+  // explainTranslation === true (or omitted): notes follow the normal rules
+  // already stated in the base prompt; no extra instruction needed.
 
   return { prompt: sections.join('\n\n---\n\n'), mode: effectiveMode };
 }
