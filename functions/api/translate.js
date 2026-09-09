@@ -1,4 +1,4 @@
-import {
+﻿import {
   BASE_PROMPT,
   NATURAL_PROMPT,
   LITERARY_PROMPT,
@@ -538,6 +538,162 @@ function failureEvent(code) {
   };
 }
 
+// Incremental extractor that streams ONLY the value of the top-level
+// "translation" field out of the model's JSON payload as it arrives.
+//
+// States:
+//   sniff      - waiting for the first non-whitespace char to decide the mode
+//   raw        - payload is not structured JSON: the content itself IS the
+//                translation, so it streams as-is (plain-text fallback)
+//   find_key   - inside the root object, scanning for "translation" at depth 1
+//   in_string  - inside the translation string: decode escapes, emit chars
+//   done       - translation string closed: never emit again (notes/segments
+//                stay out of the stream)
+//   dead       - structure abandoned (closed early / unexpected shape): emit
+//                nothing; the canonical parser decides at the end
+//
+// The raw JSON protocol itself NEVER reaches the user: in find_key/dead
+// states nothing is emitted, and the canonical final result replaces any
+// provisional text.
+export function createStreamingTranslationExtractor() {
+  let state = 'sniff';     // sniff | find_key | expect_colon | expect_quote | in_string | raw | done | dead
+  let depth = 0;
+  let inString = false;    // scanning: inside any JSON string
+  let escaped = false;     // scanning: previous char was a backslash
+  let keyCandidate = null; // depth-1 string accumulating, compared to 'translation'
+  let unicodePending = null; // decoding: \uXXXX accumulation
+  let escapePending = false; // decoding: backslash seen
+
+  function decodeSimpleEscape(ch) {
+    switch (ch) {
+      case 'n': return '\n';
+      case 'r': return '\r';
+      case 't': return '\t';
+      case 'b': return '\b';
+      case 'f': return '\f';
+      case '"': return '"';
+      case '\\': return '\\';
+      case '/': return '/';
+      case 'u': return null; // unicode escape
+      default: return ch;    // invalid escape: pass through
+    }
+  }
+
+  // Decodes the translation string body; returns emitted text. Switches to
+  // 'done' when the closing quote arrives (notes/segments never stream).
+  function processInStringChunk(text) {
+    let out = '';
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (unicodePending !== null) {
+        unicodePending += ch;
+        if (unicodePending.length === 4) {
+          out += String.fromCharCode(Number.parseInt(unicodePending, 16));
+          unicodePending = null;
+        }
+        continue;
+      }
+      if (escapePending) {
+        escapePending = false;
+        if (ch === 'u') { unicodePending = ''; continue; }
+        out += decodeSimpleEscape(ch);
+        continue;
+      }
+      if (ch === '\\') { escapePending = true; continue; }
+      if (ch === '"') { state = 'done'; return out; }
+      out += ch;
+    }
+    return out;
+  }
+
+  // Scans structural characters for the top-level "translation": " pattern.
+  // A depth-1 string is accumulated in keyCandidate; when it closes as
+  // exactly 'translation', the following colon + quote are required before
+  // entering the value string. Char-level state machine: no lookahead needed.
+  function processStructuralChunk(text) {
+    let out = '';
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+
+      if (state === 'expect_colon') {
+        if (ch === ':') { state = 'expect_quote'; continue; }
+        if (!/\s/.test(ch)) { state = 'find_key'; keyCandidate = null; inString = false; }
+        else continue;
+      }
+      if (state === 'expect_quote') {
+        if (ch === '"') {
+          state = 'in_string';
+          out += processInStringChunk(text.slice(i + 1));
+          return out;
+        }
+        if (!/\s/.test(ch)) { state = 'find_key'; keyCandidate = null; inString = false; }
+        else continue;
+      }
+
+      if (inString) {
+        if (escaped) { escaped = false; if (keyCandidate !== null) keyCandidate += '\\' + ch; continue; }
+        if (ch === '\\') { escaped = true; if (keyCandidate !== null) keyCandidate += ch; continue; }
+        if (ch === '"') {
+          inString = false;
+          if (keyCandidate !== null) {
+            if (keyCandidate === 'translation' && depth === 1) { state = 'expect_colon'; }
+            keyCandidate = null;
+          }
+          continue;
+        }
+        if (keyCandidate !== null) keyCandidate += ch;
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+        keyCandidate = depth === 1 ? '' : null;
+        continue;
+      }
+      if (ch === '{' || ch === '[') {
+        // Nested containers are allowed: the key is still matched when depth
+        // returns to 1 (e.g. segments emitted before translation).
+        depth += 1;
+        continue;
+      }
+      if (ch === '}' || ch === ']') {
+        depth -= 1;
+        if (depth <= 0) { state = 'dead'; return out; }
+        continue;
+      }
+    }
+    return out;
+  }
+
+  return {
+    // Feeds the next content chunk; returns the newly decoded translation
+    // text to stream (may be '').
+    feed(chunk) {
+      if (state === 'done' || state === 'dead') return '';
+      if (state === 'sniff') {
+        // Decide the mode from the first non-whitespace character.
+        const trimmed = chunk.trimStart();
+        if (!trimmed) return '';
+        state = trimmed[0] === '{' ? 'find_key' : 'raw';
+        chunk = trimmed;
+      }
+      if (state === 'raw') return chunk;
+      if (state === 'in_string') return processInStringChunk(chunk);
+      return processStructuralChunk(chunk);
+    },
+
+    // Fresh attempt: everything streamed so far is void.
+    reset() {
+      state = 'sniff';
+      depth = 0;
+      inString = false;
+      escaped = false;
+      keyCandidate = null;
+      unicodePending = null;
+      escapePending = false;
+    },
+  };
+}
+
 // Incremental SSE line parser. Chunk boundaries are arbitrary: one event may
 // span several chunks and one chunk may contain several events. CRLF/LF both
 // supported; malformed lines are skipped.
@@ -733,6 +889,14 @@ export async function onRequest(context) {
         try {
           send({ type: 'start', mode: composition.mode });
 
+          // Comic renders its final translation deterministically from
+          // segments (enforceReplyOrders + buildComicTranslation), so the
+          // model's free-text translation must NOT stream - the user would
+          // see the wrong reading order and then a jump after the rebuild.
+          const suppressDelta = composition.mode === 'comic';
+          const extractor = createStreamingTranslationExtractor();
+          let emittedAny = false;
+
           let budget = initialBudget;
           let lastFailureCode = null;
 
@@ -765,7 +929,18 @@ export async function onRequest(context) {
 
             let consumed;
             try {
-              consumed = await consumeMimoSse(mimoResponse, null);
+              consumed = await consumeMimoSse(
+                mimoResponse,
+                suppressDelta
+                  ? null
+                  : (chunk) => {
+                      const text = extractor.feed(chunk);
+                      if (text) {
+                        emittedAny = true;
+                        send({ type: 'delta', text });
+                      }
+                    },
+              );
             } catch (streamError) {
               console.error('MiMo stream interrupted:', streamError);
               throw { code: 'MODEL_STREAM_INTERRUPTED' };
@@ -782,6 +957,11 @@ export async function onRequest(context) {
               // Truncated output: never usable, never raw-fallback.
               lastFailureCode = 'OUTPUT_TRUNCATED';
               if (attempt < MAX_ATTEMPTS - 1) {
+                if (emittedAny) {
+                  send({ type: 'reset', reason: 'output_truncated' });
+                  emittedAny = false;
+                }
+                extractor.reset();
                 budget = getRetryCompletionBudget(budget);
                 continue;
               }
@@ -807,6 +987,11 @@ export async function onRequest(context) {
             // raw-fallback. Retry once, then give up.
             lastFailureCode = parsed.reason === 'truncated_json' ? 'OUTPUT_TRUNCATED' : 'MODEL_FORMAT_FAILURE';
             if (attempt < MAX_ATTEMPTS - 1) {
+              if (emittedAny) {
+                send({ type: 'reset', reason: lastFailureCode === 'OUTPUT_TRUNCATED' ? 'output_truncated' : 'format_error' });
+                emittedAny = false;
+              }
+              extractor.reset();
               if (parsed.reason === 'truncated_json') budget = getRetryCompletionBudget(budget);
               continue;
             }
