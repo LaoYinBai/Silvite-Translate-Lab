@@ -1,7 +1,0 @@
-{
-  "functions": {
-    "api/translate.ts": {
-      "includeFiles": "api/prompts/**"
-    }
-  }
-}

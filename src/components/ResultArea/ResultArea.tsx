@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslationStore } from '../../store/translationStore';
+import { ExportMenu } from '../ExportMenu/ExportMenu';
 
 export function ResultArea() {
   const { result, isLoading, error } = useTranslationStore();
@@ -35,18 +36,22 @@ function LoadingState() {
 }
 
 function ErrorState({ message }: { message: string }) {
+  const handleRetry = () => {
+    useTranslationStore.getState().translate();
+  };
+
   return (
     <div className="bg-white rounded-xl border border-[#ff4d4f] p-10">
       <div className="flex items-start gap-4">
         <div className="w-12 h-12 rounded-full bg-[#fff2f0] flex items-center justify-center flex-shrink-0">
-          <svg width="24" height="24" viewBox="0 0 16 16" fill="none" className="text-[#ff4d4f]">
+          <svg width="24" height="24" viewBox="0 0 16 16" fill="none" className="text-[#ff4d4f]" aria-hidden="true">
             <path d="M8 1a7 7 0 110 14A7 7 0 018 1zm-.75 3.75a.75.75 0 00-1.5 0v3.5a.75.75 0 001.5 0v-3.5zm.75 6.25a.75.75 0 100-1.5.75.75 0 000 1.5z" fill="currentColor"/>
           </svg>
         </div>
         <div>
           <h3 className="text-[17px] font-medium text-[#1a1a1a] mb-2">翻译失败</h3>
           <p className="text-[15px] text-[#555555]">{message}</p>
-          <button className="btn btn-primary mt-5">
+          <button type="button" onClick={handleRetry} className="btn btn-primary mt-5">
             重试
           </button>
         </div>
@@ -57,8 +62,6 @@ function ErrorState({ message }: { message: string }) {
 
 function ResultCard({ result }: { result: any }) {
   const [copySuccess, setCopySuccess] = useState(false);
-  const [regenerateLoading, setRegenerateLoading] = useState(false);
-  const [exportLoading, setExportLoading] = useState(false);
   
   const handleCopy = async () => {
     try {
@@ -77,22 +80,10 @@ function ResultCard({ result }: { result: any }) {
     }
   };
   
-  const handleRegenerate = async () => {
-    setRegenerateLoading(true);
-    // Simulate async operation
-    setTimeout(() => {
-      useTranslationStore.getState().translate();
-      setRegenerateLoading(false);
-    }, 500);
-  };
-  
-  const handleExport = async () => {
-    setExportLoading(true);
-    // Simulate export
-    setTimeout(() => {
-      setExportLoading(false);
-      // Show success feedback
-    }, 1000);
+  const handleRegenerate = () => {
+    // Re-runs with the current mode/context/terminology/language direction
+    // already held in the store; isLoading drives the UI.
+    void useTranslationStore.getState().translate();
   };
   
   return (
@@ -136,41 +127,19 @@ function ResultCard({ result }: { result: any }) {
           </button>
           
           <button
+            type="button"
             onClick={handleRegenerate}
-            disabled={regenerateLoading}
+            aria-label="使用当前设置重新翻译"
             className="btn btn-secondary h-[38px]"
           >
-            {regenerateLoading ? (
-              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-              </svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M2.5 2.5v4h4M13.5 13.5v-4h-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M13.25 6.25A5.5 5.5 0 003 3.5L2.5 4m11 8l.5.5a5.5 5.5 0 01-10-2.75" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            )}
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M2.5 2.5v4h4M13.5 13.5v-4h-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M13.25 6.25A5.5 5.5 0 003 3.5L2.5 4m11 8l.5.5a5.5 5.5 0 01-10-2.75" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
             重新翻译
           </button>
           
-          <button
-            onClick={handleExport}
-            disabled={exportLoading}
-            className="btn btn-secondary h-[38px]"
-          >
-            {exportLoading ? (
-              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-              </svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M2 10v3a1 1 0 001 1h10a1 1 0 001-1v-3M8 2v8m0 0l-3-3m3 3l3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            )}
-            导出
-          </button>
+          <ExportMenu />
         </div>
       </div>
       

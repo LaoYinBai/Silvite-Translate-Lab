@@ -6,12 +6,13 @@
   "scripts": {
     "dev": "vite",
     "api": "node --env-file=.env.local --experimental-strip-types scripts/local-api.ts",
-    "test": "node --test --experimental-strip-types tests/promptComposer.test.mjs tests/translateHandler.test.mjs",
+    "test": "node --test tests/promptComposer.test.mjs tests/translateHandler.test.mjs",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"
   },
   "dependencies": {
+    "docx": "^9.7.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "zustand": "^5.0.15"
