@@ -79,7 +79,6 @@ test('markdown-fenced JSON payload never leaks the fence or raw JSON', () => {
 });
 
 test('fence split across chunks still resolves to structured mode', () => {
-  const payload = '```json\n{"translation":"跨块围栏"}';
   const extractor = createStreamingTranslationExtractor();
   assert.equal(extractor.feed('```js'), '');
   assert.equal(extractor.feed('on\n{"transl'), '');

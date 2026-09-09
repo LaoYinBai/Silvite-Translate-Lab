@@ -169,3 +169,43 @@ verdict 脚本同时把 raw response 追加写进 jsonl。失败分类全靠它�
 7. 写至少 3 个对照样本（含一个"修复不能破坏"的反例）。
 8. verdict 脚本 + raw 留痕 + N 次批次，报正确率不报单次。
 9. 代码兜底链：结构执行 → fallback 到模型自由输出 → 错误态，任何结构失败都不能导致空结果。
+
+---
+
+## 六、流式升级新增的模型行为结论（2026-09-09）
+
+针对 mimo-v2.5 长输出与流式改造实测沉淀：
+
+1. **max_completion_tokens 固定 4096 会截断结构化 JSON**：文学长译文的
+   JSON 在 notes 中途断掉，JSON.parse 与 quote-repair 都救不回来。
+2. **raw structured payload 绝不能作为 translation fallback**：截断的
+   JSON/半截 SSE/协议数据一旦 raw fallback，用户就会看到一坨协议。判定
+   "看起来是结构化输出"（首字符 `{` / fence-JSON）后解析失败 → 只能
+   retry 或 error；真正纯文本响应才允许 raw fallback。
+3. **finish_reason 是最重要的失败分类信号**：`length` = 截断，与解析器
+   结论交叉验证（解析失败 + length ⇒ truncated_json）。
+4. **Thinking 必须显式关闭**：mimo-v2.5 默认 `thinking: enabled`，会吃掉
+   completion 预算且把 temperature 强制为 1.0；`thinking: {type:'disabled'}`
+   是官方参数，关掉后 temperature 0.3 才真正生效。
+5. **流式只负责 provisional UX**：`delta` 是临时文本，final 事件才替换；
+   两者绝不能叠加或拼接。
+6. **canonical pipeline 只能有一条**：流式与同步若分叉成两套 parser，
+   行为必然漂移；本次统一为 `buildCanonicalResult()`。
+7. **长输出可自动 retry 一次**：预算翻倍（clamp 到 API 上限），全局重试
+   次数 = 1；重试前必须发 `reset` 事件把 provisional 文本作废，否则用户会
+   看到拼接的错误译文。
+8. **Comic 不能直接流模型自由 translation**：先流错序文本、final 又被代码
+   重排 → UI 大跳变。Comic 全程抑制 delta，只发 start/final。
+9. **模型上游应被视为非确定性协议端点**：实测出现空响应（~1/10）、
+   JSON 双重编码（塞进 translation 字符串里）、markdown 围栏前缀三种
+   协议怪癖；分层防御 = SSE 解析器（吞 malformed 行）→ 结构化解析器
+   （unwrap/repair/truncated 分类）→ canonical 收口（sanitize + fallback）。
+
+附加工程结论：
+
+- **前端流式协议自建 NDJSON**（start/delta/reset/final/error），不透传
+  provider SSE：协议隔离 + 可自控演化。
+- **增量 extractor 是独立可测状态机**：逐字符喂入必须与整段喂入等价
+  （用"每 1 字符切一次"测试锁死）；`{"translation"` 键匹配必须排除嵌套
+  上下文（depth-1 精确候选累积），否则 notes 里的同名字符串会误触发。
+- **竞态三件套**：AbortController + generation id + stale 结果丢弃。
