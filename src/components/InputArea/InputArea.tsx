@@ -60,6 +60,119 @@ const MODE_OPTIONS: Array<{ value: TranslationMode; label: string }> = [
   { value: 'comic', label: '漫画' },
 ];
 
+// Shared toolbar pieces. The mobile (stacked rows) and desktop (single row)
+// toolbars keep their own container layout but render these same components;
+// only size/width classes differ via the className prop.
+
+function InputTypeToggle() {
+  const { inputMode, setInputMode } = useTranslationStore();
+  return (
+    <div className="segmented-control">
+      <button
+        onClick={() => setInputMode('text')}
+        className={`segmented-control-item ${inputMode === 'text' ? 'active' : ''}`}
+      >
+        文本
+      </button>
+      <button
+        onClick={() => setInputMode('image')}
+        className={`segmented-control-item ${inputMode === 'image' ? 'active' : ''}`}
+      >
+        图片
+      </button>
+    </div>
+  );
+}
+
+function ModeTabs() {
+  const { mode, setMode } = useTranslationStore();
+  return (
+    <div className="segmented-control" role="group" aria-label="翻译模式">
+      {MODE_OPTIONS.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => setMode(option.value)}
+          aria-pressed={mode === option.value}
+          className={`segmented-control-item ${mode === option.value ? 'active' : ''}`}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function AdvancedToggle({ showAdvanced, onToggle }: {
+  showAdvanced: boolean;
+  onToggle: () => void;
+}) {
+  const { context, terminology } = useTranslationStore();
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={showAdvanced}
+      className={`flex items-center gap-1.5 h-[36px] px-3 text-[13px] rounded-lg transition-colors ${
+        showAdvanced
+          ? 'bg-[#e6f4ff] text-[#1677ff] font-medium'
+          : 'text-[#666666] hover:text-[#1a1a1a] hover:bg-[#f5f5f5]'
+      }`}
+    >
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M8 10a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" strokeWidth="1.4"/>
+        <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.4"/>
+      </svg>
+      高级
+      {(context || terminology) && !showAdvanced && (
+        <span className="w-1.5 h-1.5 rounded-full bg-[#1677ff]" aria-hidden="true" />
+      )}
+    </button>
+  );
+}
+
+function ClearButton({ inputText, inputImage, onClear, className }: {
+  inputText: string;
+  inputImage: string | null;
+  onClear: () => void;
+  className: string;
+}) {
+  return (
+    <button onClick={onClear} disabled={!inputText && !inputImage} className={className}>
+      清空
+    </button>
+  );
+}
+
+function TranslateButton({ className = '' }: { className?: string }) {
+  const { inputText, inputImage, isLoading } = useTranslationStore();
+  const hasInput = Boolean(inputText.trim()) || Boolean(inputImage);
+  return (
+    <button
+      onClick={() => useTranslationStore.getState().translate()}
+      disabled={!hasInput || isLoading}
+      className={`btn btn-primary ${className}`}
+    >
+      {isLoading ? (
+        <>
+          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+          翻译中…
+        </>
+      ) : (
+        <>
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+            <path d="M14 2L7 9M14 2l-4 12-3-5-5-3 12-4z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          翻译
+        </>
+      )}
+    </button>
+  );
+}
+
 export function InputArea() {
   const { 
     inputText, 
@@ -70,8 +183,6 @@ export function InputArea() {
     setInputMode,
     imageSource,
     openPreview,
-    mode,
-    setMode,
     context,
     setContext,
     terminology,
@@ -302,91 +413,29 @@ export function InputArea() {
               Row3 clear + translate */}
           <div className="md:hidden min-w-0">
             <div className="flex items-center justify-between gap-2 px-4 pt-3">
-              <div className="segmented-control">
-                <button
-                  onClick={() => setInputMode('text')}
-                  className={`segmented-control-item ${inputMode === 'text' ? 'active' : ''}`}
-                >
-                  文本
-                </button>
-                <button
-                  onClick={() => setInputMode('image')}
-                  className={`segmented-control-item ${inputMode === 'image' ? 'active' : ''}`}
-                >
-                  图片
-                </button>
-              </div>
+              <InputTypeToggle />
 
-              <button
-                type="button"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                aria-expanded={showAdvanced}
-                className={`flex items-center gap-1.5 h-[36px] px-3 text-[13px] rounded-lg transition-colors ${
-                  showAdvanced
-                    ? 'bg-[#e6f4ff] text-[#1677ff] font-medium'
-                    : 'text-[#666666] hover:text-[#1a1a1a] hover:bg-[#f5f5f5]'
-                }`}
-              >
-                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M8 10a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" strokeWidth="1.4"/>
-                  <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.4"/>
-                </svg>
-                高级
-                {(context || terminology) && !showAdvanced && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#1677ff]" aria-hidden="true" />
-                )}
-              </button>
+              <AdvancedToggle
+                showAdvanced={showAdvanced}
+                onToggle={() => setShowAdvanced(!showAdvanced)}
+              />
             </div>
 
             {/* Mode row: horizontal scroll only; items never wrap */}
             <div className="overflow-x-auto overflow-y-hidden scrollbar-hide min-w-0 mt-2">
               <div className="flex w-max px-4">
-                <div className="segmented-control" role="group" aria-label="翻译模式">
-                  {MODE_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setMode(option.value)}
-                      aria-pressed={mode === option.value}
-                      className={`segmented-control-item ${mode === option.value ? 'active' : ''}`}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
+                <ModeTabs />
               </div>
             </div>
 
             <div className="flex items-center gap-2 px-4 py-3">
-              <button
-                onClick={handleClear}
-                disabled={!inputText && !inputImage}
+              <ClearButton
+                inputText={inputText}
+                inputImage={inputImage}
+                onClear={handleClear}
                 className="btn btn-ghost h-11 px-3"
-              >
-                清空
-              </button>
-              <button
-                onClick={handleTranslate}
-                disabled={(!inputText.trim() && !inputImage) || isLoading}
-                className="btn btn-primary flex-1 h-11"
-              >
-                {isLoading ? (
-                  <>
-                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                    </svg>
-                    翻译中…
-                  </>
-                ) : (
-                  <>
-                    <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
-                      <path d="M14 2L7 9M14 2l-4 12-3-5-5-3 12-4z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                    翻译
-                  </>
-                )}
-              </button>
+              />
+              <TranslateButton className="flex-1 h-11" />
             </div>
           </div>
 
@@ -394,96 +443,30 @@ export function InputArea() {
           <div className="hidden md:flex items-center justify-between px-5 py-4 min-w-0">
             {/* Left: Input type & Language direction */}
             <div className="flex items-center gap-4">
-              {/* Input type segmented control */}
-              <div className="segmented-control">
-                <button
-                  onClick={() => setInputMode('text')}
-                  className={`segmented-control-item ${inputMode === 'text' ? 'active' : ''}`}
-                >
-                  文本
-                </button>
-                <button
-                  onClick={() => setInputMode('image')}
-                  className={`segmented-control-item ${inputMode === 'image' ? 'active' : ''}`}
-                >
-                  图片
-                </button>
-              </div>
+              <InputTypeToggle />
 
               {/* Divider */}
               <div className="w-px h-6 bg-[#e0e0e0]" />
 
-              {/* Translation mode segmented control */}
-              <div className="segmented-control" role="group" aria-label="翻译模式">
-                {MODE_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setMode(option.value)}
-                    aria-pressed={mode === option.value}
-                    className={`segmented-control-item ${mode === option.value ? 'active' : ''}`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
+              <ModeTabs />
 
               {/* Divider */}
               <div className="w-px h-6 bg-[#e0e0e0]" />
 
-              {/* Clear button */}
-              <button
-                onClick={handleClear}
-                disabled={!inputText && !inputImage}
+              <ClearButton
+                inputText={inputText}
+                inputImage={inputImage}
+                onClear={handleClear}
                 className="btn btn-ghost h-[36px] px-3"
-              >
-                清空
-              </button>
-              {/* Advanced toggle */}
-              <button
-                type="button"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                aria-expanded={showAdvanced}
-                className={`flex items-center gap-1.5 h-[36px] px-3 text-[13px] rounded-lg transition-colors ${
-                  showAdvanced
-                    ? 'bg-[#e6f4ff] text-[#1677ff] font-medium'
-                    : 'text-[#666666] hover:text-[#1a1a1a] hover:bg-[#f5f5f5]'
-                }`}
-              >
-                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                  <path d="M8 10a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" strokeWidth="1.4"/>
-                  <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.4"/>
-                </svg>
-                高级
-                {(context || terminology) && !showAdvanced && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-[#1677ff]" aria-hidden="true" />
-                )}
-              </button>
+              />
+              <AdvancedToggle
+                showAdvanced={showAdvanced}
+                onToggle={() => setShowAdvanced(!showAdvanced)}
+              />
             </div>
 
             {/* Right: Translate button */}
-            <button
-              onClick={handleTranslate}
-              disabled={(!inputText.trim() && !inputImage) || isLoading}
-              className="btn btn-primary"
-            >
-              {isLoading ? (
-                <>
-                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                  </svg>
-                  翻译中…
-                </>
-              ) : (
-                <>
-                  <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
-                    <path d="M14 2L7 9M14 2l-4 12-3-5-5-3 12-4z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  翻译
-                </>
-              )}
-            </button>
+            <TranslateButton />
           </div>
         </div>
         

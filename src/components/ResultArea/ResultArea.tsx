@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useTranslationStore } from '../../store/translationStore';
+import { useTranslationStore, type TranslationResult } from '../../store/translationStore';
 import { ExportMenu } from '../ExportMenu/ExportMenu';
 import { languageLabel } from '../../services/export/types';
 
@@ -99,7 +99,118 @@ function ErrorState({ message }: { message: string }) {
   );
 }
 
-function ResultCard({ result }: { result: any }) {
+// Shared header pieces. The mobile (two rows) and desktop (single row)
+// headers keep their own container layout but render these same components;
+// only the size/width classes differ via the className prop.
+function LanguageDirection({ sourceLanguage, targetLanguage, className }: {
+  sourceLanguage: string;
+  targetLanguage: string;
+  className: string;
+}) {
+  return (
+    <div className={className}>
+      <span className="text-[15px] font-medium text-[#1a1a1a]">
+        {languageLabel(sourceLanguage)}
+      </span>
+      <svg width="18" height="18" viewBox="0 0 12 12" fill="none" className="text-[#888888]" aria-hidden="true">
+        <path d="M2.5 6h7m0 0L6 3m3.5 3L6 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+      <span className="text-[15px] font-medium text-[#1a1a1a]">
+        {languageLabel(targetLanguage)}
+      </span>
+    </div>
+  );
+}
+
+function CopyButton({ copySuccess, onClick, className }: {
+  copySuccess: boolean;
+  onClick: () => void;
+  className: string;
+}) {
+  return (
+    <button onClick={onClick} className={className}>
+      {copySuccess ? (
+        <>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="flex-shrink-0">
+            <path d="M4 8l3 3 5-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          已复制
+        </>
+      ) : (
+        <>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="flex-shrink-0">
+            <path d="M5.75 4.75h-2a1 1 0 00-1 1v6.5a1 1 0 001 1h6.5a1 1 0 001-1v-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M8.75 2.75h3.5v3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M6.5 9.5l6.5-6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          复制
+        </>
+      )}
+    </button>
+  );
+}
+
+function RegenerateButton({ isDemo, onClick, className }: {
+  isDemo: boolean;
+  onClick: () => void;
+  className: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={isDemo}
+      aria-label="使用当前设置重新翻译"
+      title={isDemo ? '演示数据不支持重新翻译，请输入内容后翻译' : '使用当前设置重新翻译'}
+      className={className}
+    >
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="flex-shrink-0">
+        <path d="M2.5 2.5v4h4M13.5 13.5v-4h-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="M13.25 6.25A5.5 5.5 0 003 3.5L2.5 4m11 8l.5.5a5.5 5.5 0 01-10-2.75" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+      重新翻译
+    </button>
+  );
+}
+
+function NotesToggle({ active, onToggle, className }: {
+  active: boolean;
+  onToggle: () => void;
+  className: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={active}
+      className={className}
+      title="显示或隐藏翻译说明（不触发重新翻译）"
+    >
+      翻译说明
+      <span
+        className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${
+          active ? 'bg-[#1677ff] text-white' : 'bg-[#f0f0f0] text-[#888888]'
+        }`}
+      >
+        {active ? 'ON' : 'OFF'}
+      </span>
+    </button>
+  );
+}
+
+const SEGMENT_TYPE_LABELS: Record<string, string> = {
+  dialogue: '对白',
+  narration: '旁白',
+  sound_effect: '拟声词',
+  title: '标题',
+  ui_text: '界面文字',
+  sign: '标牌',
+  caption: '图注',
+  background_text: '背景文字',
+  text: '文本',
+};
+
+function ResultCard({ result }: { result: TranslationResult }) {
   const { showTranslationNotes, toggleShowTranslationNotes, isDemoMode } = useTranslationStore();
   const [copySuccess, setCopySuccess] = useState(false);
   const isDemo = isDemoMode || result.source === 'demo';
@@ -135,153 +246,63 @@ function ResultCard({ result }: { result: any }) {
       <div className="md:hidden flex flex-col gap-3 px-4 py-4 bg-[#fafafa] border-b border-[#f0f0f0] rounded-t-xl min-w-0">
         {/* Row 1: language direction + translation-notes display toggle */}
         <div className="flex items-center justify-between w-full min-w-0">
-          <div className="flex items-center gap-2 flex-shrink-0 whitespace-nowrap min-w-0">
-            <span className="text-[15px] font-medium text-[#1a1a1a]">
-              {languageLabel(result.sourceLanguage)}
-            </span>
-            <svg width="18" height="18" viewBox="0 0 12 12" fill="none" className="text-[#888888]" aria-hidden="true">
-              <path d="M2.5 6h7m0 0L6 3m3.5 3L6 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <span className="text-[15px] font-medium text-[#1a1a1a]">
-              {languageLabel(result.targetLanguage)}
-            </span>
-          </div>
+          <LanguageDirection
+            sourceLanguage={result.sourceLanguage}
+            targetLanguage={result.targetLanguage}
+            className="flex items-center gap-2 flex-shrink-0 whitespace-nowrap min-w-0"
+          />
 
-          <button
-            type="button"
-            onClick={toggleShowTranslationNotes}
-            aria-pressed={showTranslationNotes}
+          <NotesToggle
+            active={showTranslationNotes}
+            onToggle={toggleShowTranslationNotes}
             className={`btn btn-secondary h-9 flex-shrink-0 whitespace-nowrap ${showTranslationNotes ? 'bg-[#e6f4ff] border-[#1677ff] text-[#1677ff]' : ''}`}
-            title="显示或隐藏翻译说明（不触发重新翻译）"
-          >
-            翻译说明
-            <span
-              className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${
-                showTranslationNotes
-                  ? 'bg-[#1677ff] text-white'
-                  : 'bg-[#f0f0f0] text-[#888888]'
-              }`}
-            >
-              {showTranslationNotes ? 'ON' : 'OFF'}
-            </span>
-          </button>
+          />
         </div>
 
         {/* Row 2: result actions - three equal cells */}
         <div className="grid grid-cols-3 gap-2 w-full min-w-0">
-          <button
+          <CopyButton
+            copySuccess={copySuccess}
             onClick={handleCopy}
             className={`btn ${copySuccess ? 'btn-success' : 'btn-secondary'} h-9 w-full whitespace-nowrap min-w-0`}
-          >
-            {copySuccess ? (
-              <>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="flex-shrink-0">
-                  <path d="M4 8l3 3 5-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                已复制
-              </>
-            ) : (
-              <>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="flex-shrink-0">
-                  <path d="M5.75 4.75h-2a1 1 0 00-1 1v6.5a1 1 0 001 1h6.5a1 1 0 001-1v-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M8.75 2.75h3.5v3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M6.5 9.5l6.5-6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                复制
-              </>
-            )}
-          </button>
+          />
 
-          <button
-            type="button"
+          <RegenerateButton
+            isDemo={isDemo}
             onClick={handleRegenerate}
-            disabled={isDemo}
-            aria-label="使用当前设置重新翻译"
-            title={isDemo ? '演示数据不支持重新翻译，请输入内容后翻译' : '使用当前设置重新翻译'}
             className="btn btn-secondary h-9 w-full whitespace-nowrap min-w-0"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="flex-shrink-0">
-              <path d="M2.5 2.5v4h4M13.5 13.5v-4h-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M13.25 6.25A5.5 5.5 0 003 3.5L2.5 4m11 8l.5.5a5.5 5.5 0 01-10-2.75" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            重新翻译
-          </button>
+          />
 
           <ExportMenu />
         </div>
       </div>
 
-      {/* Desktop header - unchanged */}
+      {/* Desktop header */}
       <div className="hidden md:flex items-center justify-between gap-2 px-7 py-5 bg-[#fafafa] border-b border-[#f0f0f0] rounded-t-xl min-w-0">
-        <div className="flex items-center gap-3 flex-shrink-0">
-          <span className="text-[15px] font-medium text-[#1a1a1a]">
-            {languageLabel(result.sourceLanguage)}
-          </span>
-          <svg width="18" height="18" viewBox="0 0 12 12" fill="none" className="text-[#888888]" aria-hidden="true">
-            <path d="M2.5 6h7m0 0L6 3m3.5 3L6 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-          <span className="text-[15px] font-medium text-[#1a1a1a]">
-            {languageLabel(result.targetLanguage)}
-          </span>
-        </div>
+        <LanguageDirection
+          sourceLanguage={result.sourceLanguage}
+          targetLanguage={result.targetLanguage}
+          className="flex items-center gap-3 flex-shrink-0"
+        />
 
         <div className="flex items-center gap-2 justify-end">
-          <button
+          <CopyButton
+            copySuccess={copySuccess}
             onClick={handleCopy}
             className={`btn ${copySuccess ? 'btn-success' : 'btn-secondary'} h-[38px]`}
-          >
-            {copySuccess ? (
-              <>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M4 8l3 3 5-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                已复制
-              </>
-            ) : (
-              <>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <path d="M5.75 4.75h-2a1 1 0 00-1 1v6.5a1 1 0 001 1h6.5a1 1 0 001-1v-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M8.75 2.75h3.5v3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M6.5 9.5l6.5-6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                复制
-              </>
-            )}
-          </button>
+          />
 
-          <button
-            type="button"
+          <RegenerateButton
+            isDemo={isDemo}
             onClick={handleRegenerate}
-            disabled={isDemo}
-            aria-label="使用当前设置重新翻译"
-            title={isDemo ? '演示数据不支持重新翻译，请输入内容后翻译' : '使用当前设置重新翻译'}
             className="btn btn-secondary h-[38px]"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M2.5 2.5v4h4M13.5 13.5v-4h-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M13.25 6.25A5.5 5.5 0 003 3.5L2.5 4m11 8l.5.5a5.5 5.5 0 01-10-2.75" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            重新翻译
-          </button>
+          />
 
-          <button
-            type="button"
-            onClick={toggleShowTranslationNotes}
-            aria-pressed={showTranslationNotes}
+          <NotesToggle
+            active={showTranslationNotes}
+            onToggle={toggleShowTranslationNotes}
             className={`btn btn-secondary h-[38px] ${showTranslationNotes ? 'bg-[#e6f4ff] border-[#1677ff] text-[#1677ff]' : ''}`}
-            title="显示或隐藏翻译说明（不触发重新翻译）"
-          >
-            翻译说明
-            <span
-              className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${
-                showTranslationNotes
-                  ? 'bg-[#1677ff] text-white'
-                  : 'bg-[#f0f0f0] text-[#888888]'
-              }`}
-            >
-              {showTranslationNotes ? 'ON' : 'OFF'}
-            </span>
-          </button>
+          />
 
           <ExportMenu />
         </div>
@@ -313,11 +334,11 @@ function ResultCard({ result }: { result: any }) {
             分段结果
           </h4>
           <div className="space-y-3">
-            {result.segments.map((segment: any, index: number) => (
+            {result.segments.map((segment, index: number) => (
               <div key={index} className="p-4 md:p-5 bg-[#f7f8fa] rounded-xl">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="px-2.5 py-1 text-[12px] font-medium bg-[#e6f4ff] text-[#1677ff] rounded-md">
-                    {{ dialogue: '对白', narration: '旁白', sound_effect: '拟声词', title: '标题', ui_text: '界面文字', sign: '标牌', caption: '图注', background_text: '背景文字', text: '文本' }[segment.type as string] || segment.type}
+                    {SEGMENT_TYPE_LABELS[segment.type] || segment.type}
                   </span>
                   {segment.speaker && (
                     <span className="px-2.5 py-1 text-[12px] font-medium bg-[#f0f0f0] text-[#555555] rounded-md">
@@ -346,7 +367,7 @@ function ResultCard({ result }: { result: any }) {
           </h4>
           {result.notes && result.notes.length > 0 ? (
             <div className="space-y-3">
-              {result.notes.map((note: any, index: number) => (
+              {result.notes.map((note, index: number) => (
                 <div key={index} className="flex items-start gap-3 text-[14px]">
                   <span className="text-[#888888] mt-1">•</span>
                   <span className="text-[#555555]">
