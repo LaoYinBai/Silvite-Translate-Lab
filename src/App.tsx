@@ -24,9 +24,11 @@ function App() {
   const hasResult = result || isLoading;
 
   return (
-    <div className="flex h-full bg-[#fafafa]">
-      {/* Sidebar - hidden on small screens; samples open in a drawer */}
-      <div className="hidden md:block h-full">
+    <div className="flex h-full bg-white">
+      {/* Sidebar - hidden on small screens; samples open in a drawer.
+          Floating grey panel on a white page (Qwen-style): the contrast,
+          not a border, is what makes the panel visible. */}
+      <div className="hidden md:block ml-[10px] my-[10px] h-[calc(100%-20px)] rounded-2xl bg-[#f6f7f9] overflow-hidden">
         <Sidebar onNewChat={handleNewChat} />
       </div>
       
@@ -38,7 +40,7 @@ function App() {
             onClick={() => setMobileSamplesOpen(false)}
             aria-hidden="true"
           />
-          <div className="relative w-[280px] h-full bg-white border-r border-[#e8e8e8]">
+          <div className="relative w-[280px] h-full bg-[#f6f7f9] border-r border-[#e4e6ea]">
             <Sidebar
               onNewChat={() => {
                 handleNewChat();
