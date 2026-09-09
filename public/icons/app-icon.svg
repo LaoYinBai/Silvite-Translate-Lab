@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EDF4FE"/>
+      <stop offset="1" stop-color="#C3DAF8"/>
+    </linearGradient>
+    <linearGradient id="arrow" x1="0.8" y1="0.2" x2="0.2" y2="0.8">
+      <stop offset="0" stop-color="#54A4FF"/>
+      <stop offset="0.55" stop-color="#3D7BF0"/>
+      <stop offset="1" stop-color="#2B57C9"/>
+    </linearGradient>
+    <clipPath id="imgcard">
+      <rect x="252" y="308" width="170" height="132" rx="30"/>
+    </clipPath>
+  </defs>
+
+  <!-- squircle background -->
+  <rect x="14" y="14" width="484" height="484" rx="112" fill="url(#bg)"/>
+
+  <!-- text card (top-left) -->
+  <rect x="92" y="104" width="212" height="152" rx="34" fill="#FDFEFF"/>
+  <rect x="126" y="140" width="120" height="16" rx="8" fill="#93BDF0"/>
+  <rect x="126" y="172" width="86" height="16" rx="8" fill="#A5CBF4"/>
+  <rect x="126" y="204" width="56" height="16" rx="8" fill="#B4D6F8"/>
+
+  <!-- image card (bottom-right) -->
+  <rect x="252" y="308" width="170" height="132" rx="30" fill="#FDFEFF"/>
+  <g clip-path="url(#imgcard)">
+    <path d="M256 442 L318 362 L352 400 L382 372 L414 442 Z" fill="#A9CBF4"/>
+    <path d="M352 400 L382 372 L414 442 L352 442 Z" fill="#93BDF0"/>
+    <circle cx="374" cy="336" r="17" fill="#9CC1F0"/>
+  </g>
+
+  <!-- S-shaped swap arrows -->
+  <path d="M342 152 C 250 152, 244 238, 296 262 C 344 285, 308 346, 224 350"
+        stroke="url(#arrow)" stroke-width="48" fill="none" stroke-linecap="round"/>
+  <!-- arrowhead: top-right -->
+  <path d="M326 94 L446 152 L326 210 Z" fill="#4E9CFF"/>
+  <!-- arrowhead: bottom-left -->
+  <path d="M238 292 L118 350 L238 408 Z" fill="#2B57C9"/>
+</svg>

@@ -49,11 +49,18 @@ function App() {
               {!hasResult ? (
                 /* Welcome state - centered */
                 <div className="flex flex-col items-center">
-                  <div className="text-center mb-12">
-                    <h1 className="text-[36px] font-semibold text-[#1a1a1a] mb-5 leading-tight">
-                      Silvite Translate Lab
-                    </h1>
-                    <p className="text-[17px] text-[#555555] max-w-[540px] leading-relaxed">
+                  <div className="text-center mb-10 sm:mb-12">
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mb-5">
+                      <img
+                        src="/icons/app-icon.svg"
+                        alt="Silvite 图标"
+                        className="w-12 h-12 sm:w-16 sm:h-16 flex-shrink-0"
+                      />
+                      <h1 className="text-[24px] sm:text-[32px] md:text-[36px] font-semibold text-[#1a1a1a] leading-tight">
+                        Silvite Translate Lab
+                      </h1>
+                    </div>
+                    <p className="text-[15px] sm:text-[17px] text-[#555555] max-w-[540px] leading-relaxed">
                       面向译者的 AI 翻译工作台。自动识别语言：中文译入英文，其他语言一律译入中文；支持上下文消歧、术语硬约束与图片理解。
                     </p>
                   </div>
@@ -63,7 +70,7 @@ function App() {
                   </div>
                   
                   {/* Feature hints */}
-                  <div className="flex items-center gap-10 mt-14">
+                  <div className="flex flex-wrap items-center justify-center gap-5 sm:gap-8 lg:gap-10 mt-10 sm:mt-14">
                     <FeatureHint 
                       icon={
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
