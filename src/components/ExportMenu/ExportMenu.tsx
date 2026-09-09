@@ -47,7 +47,7 @@ export function ExportMenu() {
     setError(null);
     try {
       const data = buildExportData();
-      exportTranslation(data, format);
+      await exportTranslation(data, format);
       setSuccess(true);
       setTimeout(() => setSuccess(false), 1500);
     } catch (err) {
