@@ -199,8 +199,9 @@ export function InputArea() {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        {/* Image preview */}
-        {inputImage && (
+        {/* Image preview — only in image mode, so a leftover image can never
+            overlay text editing or a demo state */}
+        {inputMode === 'image' && inputImage && (
           <div className="p-5 pb-0">
             <div className="relative inline-block">
               <img 

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { translate as apiTranslate, API_BASE_URL } from '../api/client';
+import { DEMO_SAMPLES } from '../demo/samples';
 
 export type TranslationMode = 
   | 'auto'
@@ -30,6 +31,9 @@ export interface TranslationResult {
   detectedText?: string;
   segments: TranslationSegment[];
   notes: TranslationNote[];
+  // Distinguishes demo sample data from a real model response so rendering
+  // and actions (copy/regenerate/export) can tell the two apart.
+  source?: 'demo' | 'real';
 }
 
 interface TranslationState {
@@ -53,6 +57,10 @@ interface TranslationState {
   isLoading: boolean;
   error: string | null;
   
+  // Explicit demo state. Demo data may only be shown while this is true;
+  // any real user action (editing, real image, translating) flips it off.
+  isDemoMode: boolean;
+  
   // Service status
   isServiceOnline: boolean;
   
@@ -71,6 +79,7 @@ interface TranslationState {
   setError: (error: string | null) => void;
   setServiceOnline: (online: boolean) => void;
   checkService: () => Promise<void>;
+  loadDemoSample: (index: number) => void;
   translate: () => Promise<void>;
   reset: () => void;
 }
@@ -90,10 +99,22 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   result: null,
   isLoading: false,
   error: null,
+  isDemoMode: false,
   isServiceOnline: true,
   
-  setInputText: (text) => set({ inputText: text }),
-  setInputImage: (image) => set({ inputImage: image }),
+  // Any real user action immediately exits demo mode and drops demo data.
+  // loadDemoSample bypasses these setters on purpose: it performs one full
+  // state replacement so no real data can leak into (or out of) the demo.
+  setInputText: (text) => set((s) => (
+    s.isDemoMode
+      ? { inputText: text, isDemoMode: false, result: null, error: null }
+      : { inputText: text }
+  )),
+  setInputImage: (image) => set((s) => (
+    image && s.isDemoMode
+      ? { inputImage: image, isDemoMode: false, result: null, error: null }
+      : { inputImage: image }
+  )),
   setInputMode: (mode) => set({ inputMode: mode }),
   setMode: (mode) => set({ mode }),
   setContext: (context) => set({ context }),
@@ -114,11 +135,28 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
     }
   },
   
+  // Full demo-state replacement: clears ALL real data, loads the sample,
+  // and marks the state explicitly as demo.
+  loadDemoSample: (index) => {
+    const demo = DEMO_SAMPLES[index];
+    if (!demo) return;
+    set({
+      inputText: demo.input,
+      inputImage: null,
+      inputMode: 'text',
+      result: { ...demo.result, source: 'demo' },
+      isLoading: false,
+      error: null,
+      isDemoMode: true,
+    });
+  },
+  
   translate: async () => {
     const state = get();
     if (!state.inputText.trim() && !state.inputImage) return;
     
-    set({ isLoading: true, error: null });
+    // Translating is a real action: exit demo and drop any demo result.
+    set({ isLoading: true, error: null, isDemoMode: false, result: null });
     
     try {
       const response = await apiTranslate({
@@ -133,6 +171,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       
       set({
         result: {
+          source: 'real',
           sourceLanguage: response.source_language,
           targetLanguage: response.target_language,
           translation: response.translation,
@@ -157,6 +196,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
     inputText: '',
     inputImage: null,
     result: null,
-    error: null
+    error: null,
+    isDemoMode: false
   })
 }));

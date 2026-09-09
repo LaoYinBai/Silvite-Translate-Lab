@@ -9,7 +9,7 @@ export function ExportMenu() {
   const [error, setError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const { result, inputText, mode, context, terminology } = useTranslationStore();
+  const { result, isDemoMode, inputText, mode, context, terminology } = useTranslationStore();
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -21,7 +21,7 @@ export function ExportMenu() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const disabled = !result;
+  const disabled = !result || isDemoMode;
 
   function buildExportData(): TranslationExportData {
     if (!result) throw new Error('没有可导出的翻译结果');
@@ -67,7 +67,7 @@ export function ExportMenu() {
         aria-haspopup="menu"
         aria-expanded={isOpen}
         className={`btn btn-secondary h-[38px] ${success ? 'btn-success' : ''}`}
-        title={disabled ? '暂无可导出的翻译结果' : '导出结果'}
+        title={isDemoMode ? '演示数据不可导出' : disabled ? '暂无可导出的翻译结果' : '导出结果'}
       >
         {busy ? (
           <>

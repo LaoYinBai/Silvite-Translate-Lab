@@ -62,8 +62,9 @@ function ErrorState({ message }: { message: string }) {
 }
 
 function ResultCard({ result }: { result: any }) {
-  const { showTranslationNotes, toggleShowTranslationNotes } = useTranslationStore();
+  const { showTranslationNotes, toggleShowTranslationNotes, isDemoMode } = useTranslationStore();
   const [copySuccess, setCopySuccess] = useState(false);
+  const isDemo = isDemoMode || result.source === 'demo';
   
   const handleCopy = async () => {
     try {
@@ -131,7 +132,9 @@ function ResultCard({ result }: { result: any }) {
           <button
             type="button"
             onClick={handleRegenerate}
+            disabled={isDemo}
             aria-label="使用当前设置重新翻译"
+            title={isDemo ? '演示数据不支持重新翻译，请输入内容后翻译' : '使用当前设置重新翻译'}
             className="btn btn-secondary h-[38px]"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
