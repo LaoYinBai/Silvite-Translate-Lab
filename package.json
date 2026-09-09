@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "api": "node --env-file=.env.local --experimental-strip-types scripts/local-api.ts",
-    "test": "node --test tests/promptComposer.test.mjs tests/translateHandler.test.mjs",
+    "test": "node --test tests/promptComposer.test.mjs tests/translateHandler.test.mjs tests/comicTranslation.test.mjs",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"

@@ -30,6 +30,7 @@ export type TranslationSegmentType =
   | 'ui_text'
   | 'sign'
   | 'caption'
+  | 'background_text'
   | 'text';
 
 export interface TranslationSegment {
@@ -37,9 +38,14 @@ export interface TranslationSegment {
   source: string;
   translation: string;
   // Comic-mode extras (optional; plain image/text results omit them):
-  // which panel the text belongs to and who is speaking.
+  // which panel the text belongs to, its global reading order, who is
+  // speaking, and the model-declared reply dependency (id / reply_to).
+  // The store spreads response segments, so these survive as-is.
   panel?: number;
+  order?: number;
   speaker?: string | null;
+  id?: string;
+  reply_to?: string | null;
 }
 
 export interface TranslationNote {
