@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { InputArea } from './components/InputArea/InputArea';
 import { ResultArea } from './components/ResultArea/ResultArea';
+import { Lightbox } from './components/Lightbox/Lightbox';
 import { useTranslationStore } from './store/translationStore';
 
 function App() {
@@ -147,6 +148,9 @@ function App() {
           </div>
         </div>
       </main>
+
+      {/* Image lightbox — rendered at the app root so no layout clips it */}
+      <Lightbox />
     </div>
   );
 }
