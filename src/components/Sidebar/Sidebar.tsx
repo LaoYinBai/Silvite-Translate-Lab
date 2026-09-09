@@ -8,15 +8,6 @@ interface SidebarProps {
 export function Sidebar({ onNewChat }: SidebarProps) {
   const { isServiceOnline } = useTranslationStore();
 
-  const loadSample = (index: number) => {
-    const demo = DEMO_SAMPLES[index];
-    if (!demo) return;
-    const store = useTranslationStore.getState();
-    store.setInputText(demo.input);
-    store.setInputMode('text');
-    store.setResult(demo.result);
-  };
-
   return (
     <aside className="w-[280px] h-full flex flex-col bg-[#fafafa] border-r border-[#e8e8e8] select-none flex-shrink-0">
       {/* Logo & Brand */}
@@ -59,7 +50,7 @@ export function Sidebar({ onNewChat }: SidebarProps) {
           {DEMO_SAMPLES.map((demo, index) => (
             <button
               key={demo.title}
-              onClick={() => loadSample(index)}
+              onClick={() => useTranslationStore.getState().loadDemoSample(index)}
               className="w-full flex items-start gap-3 px-3 py-2.5 rounded-lg text-left text-[#1a1a1a] hover:bg-[#f0f0f0] transition-colors"
             >
               <svg width="18" height="18" viewBox="0 0 16 16" fill="none" className="mt-0.5 flex-shrink-0 opacity-60" aria-hidden="true">
