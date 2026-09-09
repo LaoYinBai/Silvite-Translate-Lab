@@ -25,8 +25,9 @@ function App() {
 
   return (
     <div className="flex h-full bg-[#fafafa]">
-      {/* Sidebar - hidden on small screens; samples open in a drawer */}
-      <div className="hidden md:block h-full">
+      {/* Sidebar - hidden on small screens; samples open in a drawer.
+          Desktop: 10px breathing margin so the panel floats off the edge. */}
+      <div className="hidden md:block ml-[10px] my-[10px] h-[calc(100%-20px)]">
         <Sidebar onNewChat={handleNewChat} />
       </div>
       
