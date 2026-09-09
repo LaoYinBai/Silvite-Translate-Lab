@@ -20,6 +20,11 @@ export interface TranslationResponse {
     type: string;
     source: string;
     translation: string;
+    panel?: number;
+    order?: number;
+    speaker?: string | null;
+    id?: string;
+    reply_to?: string | null;
   }>;
   notes: Array<{
     source: string;

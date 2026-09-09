@@ -204,6 +204,11 @@ function ResultCard({ result }: { result: any }) {
                       {segment.speaker}
                     </span>
                   )}
+                  {typeof segment.panel === 'number' && (
+                    <span className="px-2.5 py-1 text-[12px] font-medium bg-[#f0f0f0] text-[#555555] rounded-md">
+                      画格 {segment.panel}
+                    </span>
+                  )}
                 </div>
                 <p className="text-[14px] text-[#888888] mb-2">{segment.source}</p>
                 <p className="text-[15px] text-[#1a1a1a]">{segment.translation}</p>
