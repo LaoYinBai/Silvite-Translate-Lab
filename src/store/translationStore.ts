@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { translate as apiTranslate, API_BASE_URL } from '../api/client';
+import { translateStream as apiTranslateStream, API_BASE_URL } from '../api/client';
 import { DEMO_SAMPLES } from '../demo/samples';
 
 export type TranslationMode = 
@@ -90,6 +90,10 @@ interface TranslationState {
   result: TranslationResult | null;
   isLoading: boolean;
   error: string | null;
+  // Streaming provisional state (see translate() for the lifecycle).
+  streamingText: string;
+  isStreaming: boolean;
+  streamStatus: string | null;
   
   // Explicit demo state. Demo data may only be shown while this is true;
   // any real user action (editing, real image, translating) flips it off.
@@ -122,6 +126,19 @@ interface TranslationState {
   reset: () => void;
 }
 
+// Streaming request lifecycle (module-level, not serializable state):
+// a new translate()/reset()/demo switch aborts any in-flight stream so stale
+// chunks can never pollute a newer session.
+let activeAbort: AbortController | null = null;
+let requestGeneration = 0;
+
+function abortActiveStream() {
+  if (activeAbort) {
+    activeAbort.abort();
+    activeAbort = null;
+  }
+}
+
 export const useTranslationStore = create<TranslationState>((set, get) => ({
   inputText: '',
   inputImage: null,
@@ -139,6 +156,12 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   result: null,
   isLoading: false,
   error: null,
+  // Streaming provisional state. streamingText is NOT the canonical result:
+  // it only feeds the ResultArea provisional view until the final event
+  // replaces it wholesale.
+  streamingText: '',
+  isStreaming: false,
+  streamStatus: null,
   isDemoMode: false,
   activeDemoId: null,
   isServiceOnline: true,
@@ -193,6 +216,9 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
     const demo = DEMO_SAMPLES[index];
     if (!demo) return;
 
+    // Switching to a demo voids any in-flight real translation.
+    abortActiveStream();
+
     set({
       inputText: demo.inputType === 'text' ? demo.source : '',
       inputImage: null,
@@ -208,6 +234,9 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       isDemoMode: true,
       activeDemoId: demo.id,
       previewImage: null,
+      isStreaming: false,
+      streamingText: '',
+      streamStatus: null,
     });
 
     if (demo.inputType === 'image' && demo.demoImage) {
@@ -238,6 +267,11 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
     // Translating is a real action: exit demo and drop any demo result.
     // A demo image being translated has been adopted as real content, so it
     // becomes a user image (full remove/replace affordances from now on).
+    abortActiveStream();
+    const generation = ++requestGeneration;
+    const controller = new AbortController();
+    activeAbort = controller;
+
     set({
       isLoading: true,
       error: null,
@@ -245,10 +279,15 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       activeDemoId: null,
       result: null,
       imageSource: state.imageSource === 'demo' ? 'user' : state.imageSource,
+      streamingText: '',
+      isStreaming: true,
+      // Comic streams no translation text (final is rebuilt from segments);
+      // surface what the backend is doing instead.
+      streamStatus: state.mode === 'comic' ? '正在分析漫画结构…' : null,
     });
     
     try {
-      const response = await apiTranslate({
+      const response = await apiTranslateStream({
         text: state.inputText || undefined,
         imageDataUrl: state.inputImage || undefined,
         mode: state.mode,
@@ -256,8 +295,23 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
         terminology: state.terminology || undefined,
         preserveNames: state.preserveNames,
         explainTranslation: state.explainTranslation
-      });
-      
+      }, {
+        onDelta: (text) => {
+          if (generation !== requestGeneration || controller.signal.aborted) return;
+          set((s) => ({ streamingText: s.streamingText + text }));
+        },
+        onReset: () => {
+          if (generation !== requestGeneration || controller.signal.aborted) return;
+          set({
+            streamingText: '',
+            streamStatus: '译文较长，正在重新生成完整结果…',
+          });
+        },
+      }, controller.signal);
+
+      // A newer session started meanwhile: this result is stale.
+      if (generation !== requestGeneration) return;
+
       set({
         result: {
           source: 'real',
@@ -271,13 +325,22 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
           })),
           notes: response.notes || []
         },
-        isLoading: false
+        isLoading: false,
+        isStreaming: false,
+        streamingText: '',
+        streamStatus: null,
       });
     } catch (err) {
+      if (generation !== requestGeneration) return;
       set({
         isLoading: false,
+        isStreaming: false,
+        streamingText: '',
+        streamStatus: null,
         error: err instanceof Error ? err.message : '翻译服务暂时不可用，请稍后重试'
       });
+    } finally {
+      if (activeAbort === controller) activeAbort = null;
     }
   },
   
@@ -285,21 +348,27 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   // entry). Clears the whole translation session: input, image, settings
   // (incl. anything a demo sample filled in), result/notes and demo state.
   // Deliberately KEEPS global app state: theme, service status.
-  reset: () => set({
-    inputText: '',
-    inputImage: null,
-    inputMode: 'text',
-    imageSource: null,
-    mode: 'auto',
-    context: '',
-    terminology: '',
-    preserveNames: true,
-    showTranslationNotes: false,
-    result: null,
-    error: null,
-    isLoading: false,
-    isDemoMode: false,
-    activeDemoId: null,
-    previewImage: null,
-  })
+  reset: () => {
+    abortActiveStream();
+    set({
+      inputText: '',
+      inputImage: null,
+      inputMode: 'text',
+      imageSource: null,
+      mode: 'auto',
+      context: '',
+      terminology: '',
+      preserveNames: true,
+      showTranslationNotes: false,
+      result: null,
+      error: null,
+      isLoading: false,
+      isDemoMode: false,
+      activeDemoId: null,
+      previewImage: null,
+      isStreaming: false,
+      streamingText: '',
+      streamStatus: null,
+    });
+  }
 }));

@@ -4,7 +4,7 @@ import { ExportMenu } from '../ExportMenu/ExportMenu';
 import { languageLabel } from '../../services/export/types';
 
 export function ResultArea() {
-  const { result, isLoading, error } = useTranslationStore();
+  const { result, isLoading, error, isStreaming, streamingText, streamStatus } = useTranslationStore();
   
   if (!result && !isLoading && !error) {
     return null;
@@ -12,9 +12,47 @@ export function ResultArea() {
   
   return (
     <div className="w-full mt-6 md:mt-10">
-      {isLoading && <LoadingState />}
       {error && <ErrorState message={error} />}
       {result && !isLoading && <ResultCard result={result} />}
+      {!result && !error && isLoading && (
+        isStreaming && (streamingText || streamStatus) ? (
+          <StreamingCard text={streamingText} status={streamStatus} />
+        ) : (
+          <LoadingState />
+        )
+      )}
+    </div>
+  );
+}
+
+// Provisional streaming view. The text shown here is NOT the canonical
+// result - the final event replaces it wholesale when it arrives.
+function StreamingCard({ text, status }: { text: string; status: string | null }) {
+  return (
+    <div className="bg-white rounded-xl border border-[#e0e0e0]">
+      <div className="flex items-center justify-between gap-2 px-4 py-4 md:px-7 md:py-5 bg-[#fafafa] border-b border-[#f0f0f0] rounded-t-xl min-w-0">
+        <div className="flex items-center gap-2.5 min-w-0 flex-shrink-0">
+          <svg className="animate-spin h-5 w-5 text-[#1677ff] flex-shrink-0" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+          </svg>
+          <span className="text-[15px] font-medium text-[#1a1a1a]">正在翻译</span>
+        </div>
+        {status && (
+          <span className="text-[13px] text-[#888888] whitespace-nowrap min-w-0 truncate">{status}</span>
+        )}
+      </div>
+      <div className="px-4 py-4 md:px-7 md:py-6">
+        {text ? (
+          <p className="whitespace-pre-wrap text-[17px] leading-[1.8] text-[#1a1a1a] min-h-[60px]">
+            {text}
+          </p>
+        ) : (
+          <p className="text-[15px] text-[#888888] min-h-[60px]">
+            {status || '正在生成译文…'}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
