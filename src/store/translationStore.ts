@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { translateStream as apiTranslateStream, API_BASE_URL } from '../api/client';
+import { translateStream as apiTranslateStream, checkHealth } from '../api/client';
 import { DEMO_SAMPLES } from '../demo/samples';
 
 export type TranslationMode = 
@@ -200,12 +200,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   setError: (error) => set({ error }),
   setServiceOnline: (online) => set({ isServiceOnline: online }),
   checkService: async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/translate`, { method: 'OPTIONS' });
-      set({ isServiceOnline: response.ok });
-    } catch {
-      set({ isServiceOnline: false });
-    }
+    set({ isServiceOnline: await checkHealth() });
   },
   
   // Full demo-state replacement: clears ALL real data, loads the sample
