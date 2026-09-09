@@ -230,7 +230,6 @@ export const DEMO_SAMPLES: DemoSample[] = [
     inputType: 'image',
     source: '',
     mode: 'comic',
-    context: '这是轻松日常校园漫画，两位主角是熟人，对话语气自然，注意气泡对白、旁白与拟声词的不同处理方式。',
     demoImage: '/demo/comic.jpg',
     result: {
       source: 'demo',
