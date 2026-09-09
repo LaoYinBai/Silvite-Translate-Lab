@@ -59,14 +59,14 @@ export function ExportMenu() {
   }
 
   return (
-    <div className="relative" ref={menuRef}>
+    <div className="relative w-full md:w-auto" ref={menuRef}>
       <button
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled || busy}
         aria-haspopup="menu"
         aria-expanded={isOpen}
-        className={`btn btn-secondary h-[38px] ${success ? 'btn-success' : ''}`}
+        className={`btn btn-secondary h-9 md:h-[38px] w-full md:w-auto whitespace-nowrap min-w-0 ${success ? 'btn-success' : ''}`}
         title={isDemoMode ? '演示数据不可导出' : disabled ? '暂无可导出的翻译结果' : '导出结果'}
       >
         {busy ? (
