@@ -993,6 +993,10 @@ export async function onRequest(context) {
               );
             } catch (streamError) {
               console.error('MiMo stream interrupted:', streamError);
+              if (attempt < MAX_ATTEMPTS - 1) {
+                prepareRetry('stream_interrupted', false);
+                continue;
+              }
               throw { code: 'MODEL_STREAM_INTERRUPTED' };
             }
 
