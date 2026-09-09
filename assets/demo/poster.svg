@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1000" viewBox="0 0 800 1000">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EDF4FE"/>
+      <stop offset="1" stop-color="#C3DAF8"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="1000" rx="24" fill="url(#bg)"/>
+
+  <!-- brand line -->
+  <text x="400" y="120" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="30" fill="#4A7FD4" font-weight="bold">MoDi Connect × Silvite 联合呈现</text>
+
+  <!-- main title -->
+  <text x="400" y="260" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="72" fill="#1A3A75" font-weight="bold">Silvite 开发者沙龙</text>
+  <text x="400" y="330" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="36" fill="#3A6BC4">AI 翻译技术分享 · 第 3 期</text>
+
+  <!-- divider -->
+  <line x1="200" y1="380" x2="600" y2="380" stroke="#7FA8E0" stroke-width="3"/>
+
+  <!-- time & place -->
+  <text x="400" y="470" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="40" fill="#1A3A75" font-weight="bold">2026 年 9 月 26 日（周六）14:00</text>
+  <text x="400" y="545" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="36" fill="#2A4F94">沈阳市浑南区创新路 88 号 · 云启空间</text>
+
+  <!-- illustration: swap arrows badge -->
+  <g transform="translate(280, 600)">
+    <rect x="0" y="0" width="240" height="240" rx="56" fill="#FDFEFF"/>
+    <rect x="36" y="44" width="90" height="14" rx="7" fill="#93BDF0"/>
+    <rect x="36" y="72" width="64" height="14" rx="7" fill="#A5CBF4"/>
+    <rect x="36" y="100" width="42" height="14" rx="7" fill="#B4D6F8"/>
+    <rect x="120" y="128" width="88" height="76" rx="18" fill="#EAF2FE"/>
+    <path d="M128 200 L156 166 L172 184 L188 170 L202 200 Z" fill="#A9CBF4"/>
+    <circle cx="180" cy="152" r="9" fill="#9CC1F0"/>
+    <path d="M196 40 C 150 40, 147 84, 173 96 C 199 108, 180 140, 136 142" stroke="#3D7BF0" stroke-width="24" fill="none" stroke-linecap="round"/>
+    <path d="M190 12 L250 40 L190 68 Z" fill="#4E9CFF"/>
+    <path d="M144 114 L84 142 L144 170 Z" fill="#2B57C9"/>
+  </g>
+
+  <!-- bottom note -->
+  <text x="400" y="930" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="30" fill="#4A7FD4">多语言翻译 · 上下文消歧 · 术语约束</text>
+  <text x="400" y="972" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="26" fill="#6B93D6">现场演示与交流 · 免费报名参加</text>
+</svg>

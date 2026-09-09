@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="540" viewBox="0 0 900 540">
+  <rect width="900" height="540" rx="16" fill="#FAFCFF"/>
+
+  <!-- narration box (top) -->
+  <rect x="330" y="24" width="240" height="54" rx="10" fill="#E8F0FC" stroke="#5B8CD9" stroke-width="3"/>
+  <text x="450" y="60" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="28" fill="#2A4F94" font-weight="bold">十分钟前。</text>
+
+  <!-- panel 1 (left) -->
+  <rect x="30" y="100" width="400" height="410" rx="14" fill="#FFFFFF" stroke="#2A4F94" stroke-width="4"/>
+  <!-- character A: annoyed -->
+  <circle cx="300" cy="330" r="52" fill="#FFE0C2" stroke="#8A5A2B" stroke-width="3"/>
+  <path d="M248 322 a52 52 0 0 1 104 0" fill="#3A3A3A"/>
+  <line x1="278" y1="318" x2="294" y2="326" stroke="#2A2A2A" stroke-width="4" stroke-linecap="round"/>
+  <line x1="322" y1="318" x2="306" y2="326" stroke="#2A2A2A" stroke-width="4" stroke-linecap="round"/>
+  <line x1="284" y1="348" x2="316" y2="348" stroke="#2A2A2A" stroke-width="4" stroke-linecap="round"/>
+  <rect x="272" y="386" width="56" height="90" rx="18" fill="#4A7FD4"/>
+  <!-- speech bubble -->
+  <rect x="52" y="150" width="330" height="96" rx="20" fill="#FFFFFF" stroke="#2A4F94" stroke-width="4"/>
+  <path d="M290 246 L306 278 L326 246 Z" fill="#FFFFFF" stroke="#2A4F94" stroke-width="4"/>
+  <path d="M292 244 L306 272 L320 244 Z" fill="#FFFFFF"/>
+  <text x="217" y="210" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="32" fill="#1A1A1A" font-weight="bold">你怎么现在才来！</text>
+
+  <!-- panel 2 (right) -->
+  <rect x="470" y="100" width="400" height="410" rx="14" fill="#FFFFFF" stroke="#2A4F94" stroke-width="4"/>
+  <!-- character B: panting -->
+  <circle cx="620" cy="330" r="52" fill="#FFD9B8" stroke="#8A5A2B" stroke-width="3"/>
+  <path d="M568 322 a52 52 0 0 1 104 0" fill="#5A4632"/>
+  <circle cx="602" cy="322" r="5" fill="#2A2A2A"/>
+  <circle cx="638" cy="322" r="5" fill="#2A2A2A"/>
+  <ellipse cx="620" cy="350" rx="9" ry="6" fill="#2A2A2A"/>
+  <rect x="592" y="386" width="56" height="90" rx="18" fill="#D96B4A"/>
+  <!-- speech bubble -->
+  <rect x="500" y="150" width="356" height="96" rx="20" fill="#FFFFFF" stroke="#2A4F94" stroke-width="4"/>
+  <path d="M560 246 L576 278 L596 246 Z" fill="#FFFFFF" stroke="#2A4F94" stroke-width="4"/>
+  <path d="M562 244 L576 272 L590 244 Z" fill="#FFFFFF"/>
+  <text x="678" y="192" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="28" fill="#1A1A1A" font-weight="bold">路上堵死了，</text>
+  <text x="678" y="228" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="28" fill="#1A1A1A" font-weight="bold">我已经跑过来了！</text>
+
+  <!-- onomatopoeia -->
+  <text x="120" y="500" font-family="Microsoft YaHei, sans-serif" font-size="52" fill="#3D7BF0" font-weight="bold" transform="rotate(-8 120 500)">呼——</text>
+</svg>
