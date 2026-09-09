@@ -209,11 +209,11 @@ export function InputArea() {
         {/* Image mode: fully replaces the text panel. The textarea is never
             rendered here. Demo images show preview only (no remove/replace). */}
         {inputMode === 'image' && !inputImage && (
-          <div className="p-6">
+          <div className="p-4 md:p-6">
             <button
               type="button"
               onClick={handleReplaceImage}
-              className="w-full min-h-[220px] rounded-xl border-2 border-dashed border-[#d9d9d9] hover:border-[#1677ff] hover:bg-[#f7fbff] transition-colors flex flex-col items-center justify-center gap-2 text-center cursor-pointer"
+              className="w-full min-h-[180px] md:min-h-[220px] rounded-xl border-2 border-dashed border-[#d9d9d9] hover:border-[#1677ff] hover:bg-[#f7fbff] transition-colors flex flex-col items-center justify-center gap-2 text-center cursor-pointer"
             >
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <rect x="3" y="5" width="18" height="14" rx="2" stroke="#b0b0b0" strokeWidth="1.6"/>
@@ -230,7 +230,7 @@ export function InputArea() {
         )}
 
         {inputMode === 'image' && inputImage && (
-          <div className="p-6">
+          <div className="p-4 md:p-6">
             <div className="flex flex-col items-center gap-3">
               <button
                 type="button"
@@ -241,7 +241,7 @@ export function InputArea() {
                 <img
                   src={inputImage}
                   alt={imageSource === 'demo' ? '演示样本图片' : '已上传图片'}
-                  className="max-h-[360px] max-w-full w-auto object-contain"
+                  className="max-h-[300px] md:max-h-[360px] max-w-full w-auto object-contain"
                   draggable={false}
                 />
                 <span className="absolute bottom-2 right-2 flex items-center gap-1 px-2 py-1 rounded-md bg-black/55 text-white text-[11px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
@@ -273,7 +273,7 @@ export function InputArea() {
         {/* Text mode: the classic textarea panel. Mutually exclusive with the
             image panels above. */}
         {inputMode === 'text' && (
-          <div className="p-6 pb-4">
+          <div className="p-4 pb-4 md:p-6 md:pb-4">
             <textarea
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
@@ -281,118 +281,215 @@ export function InputArea() {
               placeholder="输入任意语言的文本。中文译为英文，其他语言自动译入中文..."
               disabled={isLoading}
               rows={5}
-              className="w-full resize-none border-none outline-none text-[17px] leading-[1.8] text-[#1a1a1a] placeholder:text-[#b0b0b0] bg-transparent min-h-[180px]"
+              className="w-full resize-none border-none outline-none text-[17px] leading-[1.8] text-[#1a1a1a] placeholder:text-[#b0b0b0] bg-transparent min-h-[140px] md:min-h-[180px]"
             />
           </div>
         )}
         
-        {/* Bottom toolbar */}
-        <div className="flex items-center justify-between px-5 py-4 border-t border-[#f0f0f0]">
-          {/* Left: Input type & Language direction */}
-          <div className="flex items-center gap-4">
-            {/* Input type segmented control */}
-            <div className="segmented-control">
-              <button
-                onClick={() => setInputMode('text')}
-                className={`segmented-control-item ${inputMode === 'text' ? 'active' : ''}`}
-              >
-                文本
-              </button>
-              <button
-                onClick={() => setInputMode('image')}
-                className={`segmented-control-item ${inputMode === 'image' ? 'active' : ''}`}
-              >
-                图片
-              </button>
-            </div>
-            
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".jpg,.jpeg,.png,.webp"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-            
-            {/* Divider */}
-            <div className="w-px h-6 bg-[#e0e0e0]" />
-            
-            {/* Translation mode segmented control */}
-            <div className="segmented-control" role="group" aria-label="翻译模式">
-              {MODE_OPTIONS.map((option) => (
+        {/* Hidden file input shared by both layouts */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".jpg,.jpeg,.png,.webp"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+
+        {/* Bottom toolbar — mobile gets its own stacked layout; desktop keeps
+            the single row. The two layouts share all handlers and state. */}
+        <div className="border-t border-[#f0f0f0] min-w-0">
+          {/* Mobile layout: Row1 type/advanced, Row2 scrollable modes,
+              Row3 clear + translate */}
+          <div className="md:hidden min-w-0">
+            <div className="flex items-center justify-between gap-2 px-4 pt-3">
+              <div className="segmented-control">
                 <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setMode(option.value)}
-                  aria-pressed={mode === option.value}
-                  className={`segmented-control-item ${mode === option.value ? 'active' : ''}`}
+                  onClick={() => setInputMode('text')}
+                  className={`segmented-control-item ${inputMode === 'text' ? 'active' : ''}`}
                 >
-                  {option.label}
+                  文本
                 </button>
-              ))}
+                <button
+                  onClick={() => setInputMode('image')}
+                  className={`segmented-control-item ${inputMode === 'image' ? 'active' : ''}`}
+                >
+                  图片
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                aria-expanded={showAdvanced}
+                className={`flex items-center gap-1.5 h-[36px] px-3 text-[13px] rounded-lg transition-colors ${
+                  showAdvanced
+                    ? 'bg-[#e6f4ff] text-[#1677ff] font-medium'
+                    : 'text-[#666666] hover:text-[#1a1a1a] hover:bg-[#f5f5f5]'
+                }`}
+              >
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M8 10a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" strokeWidth="1.4"/>
+                  <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.4"/>
+                </svg>
+                高级
+                {(context || terminology) && !showAdvanced && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#1677ff]" aria-hidden="true" />
+                )}
+              </button>
             </div>
-            
-            {/* Divider */}
-            <div className="w-px h-6 bg-[#e0e0e0]" />
-            
-            {/* Clear button */}
+
+            {/* Mode row: horizontal scroll only; items never wrap */}
+            <div className="overflow-x-auto overflow-y-hidden scrollbar-hide min-w-0 mt-2">
+              <div className="flex w-max px-4">
+                <div className="segmented-control" role="group" aria-label="翻译模式">
+                  {MODE_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setMode(option.value)}
+                      aria-pressed={mode === option.value}
+                      className={`segmented-control-item ${mode === option.value ? 'active' : ''}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 px-4 py-3">
+              <button
+                onClick={handleClear}
+                disabled={!inputText && !inputImage}
+                className="btn btn-ghost h-11 px-3"
+              >
+                清空
+              </button>
+              <button
+                onClick={handleTranslate}
+                disabled={(!inputText.trim() && !inputImage) || isLoading}
+                className="btn btn-primary flex-1 h-11"
+              >
+                {isLoading ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                    翻译中…
+                  </>
+                ) : (
+                  <>
+                    <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+                      <path d="M14 2L7 9M14 2l-4 12-3-5-5-3 12-4z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                    翻译
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Desktop layout: unchanged single row */}
+          <div className="hidden md:flex items-center justify-between px-5 py-4 min-w-0">
+            {/* Left: Input type & Language direction */}
+            <div className="flex items-center gap-4">
+              {/* Input type segmented control */}
+              <div className="segmented-control">
+                <button
+                  onClick={() => setInputMode('text')}
+                  className={`segmented-control-item ${inputMode === 'text' ? 'active' : ''}`}
+                >
+                  文本
+                </button>
+                <button
+                  onClick={() => setInputMode('image')}
+                  className={`segmented-control-item ${inputMode === 'image' ? 'active' : ''}`}
+                >
+                  图片
+                </button>
+              </div>
+
+              {/* Divider */}
+              <div className="w-px h-6 bg-[#e0e0e0]" />
+
+              {/* Translation mode segmented control */}
+              <div className="segmented-control" role="group" aria-label="翻译模式">
+                {MODE_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setMode(option.value)}
+                    aria-pressed={mode === option.value}
+                    className={`segmented-control-item ${mode === option.value ? 'active' : ''}`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Divider */}
+              <div className="w-px h-6 bg-[#e0e0e0]" />
+
+              {/* Clear button */}
+              <button
+                onClick={handleClear}
+                disabled={!inputText && !inputImage}
+                className="btn btn-ghost h-[36px] px-3"
+              >
+                清空
+              </button>
+              {/* Advanced toggle */}
+              <button
+                type="button"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                aria-expanded={showAdvanced}
+                className={`flex items-center gap-1.5 h-[36px] px-3 text-[13px] rounded-lg transition-colors ${
+                  showAdvanced
+                    ? 'bg-[#e6f4ff] text-[#1677ff] font-medium'
+                    : 'text-[#666666] hover:text-[#1a1a1a] hover:bg-[#f5f5f5]'
+                }`}
+              >
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M8 10a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" strokeWidth="1.4"/>
+                  <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.4"/>
+                </svg>
+                高级
+                {(context || terminology) && !showAdvanced && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#1677ff]" aria-hidden="true" />
+                )}
+              </button>
+            </div>
+
+            {/* Right: Translate button */}
             <button
-              onClick={handleClear}
-              disabled={!inputText && !inputImage}
-              className="btn btn-ghost h-[36px] px-3"
+              onClick={handleTranslate}
+              disabled={(!inputText.trim() && !inputImage) || isLoading}
+              className="btn btn-primary"
             >
-              清空
-            </button>
-            {/* Advanced toggle */}
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              aria-expanded={showAdvanced}
-              className={`flex items-center gap-1.5 h-[36px] px-3 text-[13px] rounded-lg transition-colors ${
-                showAdvanced
-                  ? 'bg-[#e6f4ff] text-[#1677ff] font-medium'
-                  : 'text-[#666666] hover:text-[#1a1a1a] hover:bg-[#f5f5f5]'
-              }`}
-            >
-              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path d="M8 10a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" strokeWidth="1.4"/>
-                <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.4"/>
-              </svg>
-              高级
-              {(context || terminology) && !showAdvanced && (
-                <span className="w-1.5 h-1.5 rounded-full bg-[#1677ff]" aria-hidden="true" />
+              {isLoading ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                  翻译中…
+                </>
+              ) : (
+                <>
+                  <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+                    <path d="M14 2L7 9M14 2l-4 12-3-5-5-3 12-4z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                  翻译
+                </>
               )}
             </button>
           </div>
-          
-          {/* Right: Translate button */}
-          <button
-            onClick={handleTranslate}
-            disabled={(!inputText.trim() && !inputImage) || isLoading}
-            className="btn btn-primary"
-          >
-            {isLoading ? (
-              <>
-                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
-                </svg>
-                翻译中…
-              </>
-            ) : (
-              <>
-                <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
-                  <path d="M14 2L7 9M14 2l-4 12-3-5-5-3 12-4z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                翻译
-              </>
-            )}
-          </button>
         </div>
         
         {/* Advanced panel: context & terminology constraints */}
         {showAdvanced && (
-          <div className="px-5 pb-4 border-t border-[#f0f0f0] pt-4 bg-[#fafafa] rounded-b-xl">
+          <div className="px-4 pb-4 md:px-5 border-t border-[#f0f0f0] pt-4 bg-[#fafafa] rounded-b-xl">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="context-input" className="block text-[12px] font-medium text-[#555555] mb-1.5">

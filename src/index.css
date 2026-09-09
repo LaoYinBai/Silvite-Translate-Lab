@@ -203,6 +203,19 @@ body {
   cursor: pointer;
   transition: all 0.15s ease;
   font-family: var(--font-sans);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Horizontal-only scroll container (mobile mode row): hide the scrollbar */
+.scrollbar-hide {
+  -webkit-overflow-scrolling: touch;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }
 
 .segmented-control-item:hover:not(:disabled) {
