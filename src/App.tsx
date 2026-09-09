@@ -53,8 +53,8 @@ function App() {
                     <h1 className="text-[36px] font-semibold text-[#1a1a1a] mb-5 leading-tight">
                       Silvite Translate Lab
                     </h1>
-                    <p className="text-[18px] text-[#555555] max-w-[520px] leading-relaxed">
-                      AI 驱动的文本与图片翻译工具，支持中英文双向翻译与上下文理解。
+                    <p className="text-[17px] text-[#555555] max-w-[540px] leading-relaxed">
+                      面向译者的 AI 翻译工作台。自动识别语言：中文译入英文，其他语言一律译入中文；支持上下文消歧、术语硬约束与图片理解。
                     </p>
                   </div>
                   
@@ -70,8 +70,8 @@ function App() {
                           <path d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       }
-                      title="自动识别"
-                      desc="自动判断输入语言"
+                      title="多语言路由"
+                      desc="其他语言自动译入中文"
                     />
                     <FeatureHint 
                       icon={
@@ -80,7 +80,7 @@ function App() {
                         </svg>
                       }
                       title="图片翻译"
-                      desc="支持拖拽、粘贴或上传图片"
+                      desc="漫画、海报、UI 截图均可"
                     />
                     <FeatureHint 
                       icon={
@@ -88,8 +88,8 @@ function App() {
                           <path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                         </svg>
                       }
-                      title="理解上下文"
-                      desc="结合语气与风格生成自然译文"
+                      title="Context 消歧"
+                      desc="术语硬约束，译名始终一致"
                     />
                   </div>
                 </div>

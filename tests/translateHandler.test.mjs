@@ -187,6 +187,45 @@ test('model reporting unknown language gets normalized', async () => {
   assert.equal(payload.target_language, 'zh');
 });
 
+test('non-Chinese non-English languages route to Chinese', async () => {
+  globalThis.fetch = async () => fakeMimoResponse(JSON.stringify({
+    source_language: 'ja',
+    target_language: 'unknown',
+    translation: '这是测试。',
+    segments: [],
+    notes: [],
+  }));
+
+  const response = await onRequest({
+    request: makeRequest({ text: 'これはテストです。', mode: 'auto' }),
+    env: ENV,
+  });
+  const payload = await response.json();
+
+  assert.equal(payload.source_language, 'ja');
+  assert.equal(payload.target_language, 'zh');
+  assert.equal(payload.translation, '这是测试。');
+});
+
+test('Chinese input routes to English via heuristic fallback', async () => {
+  globalThis.fetch = async () => fakeMimoResponse(JSON.stringify({
+    source_language: 'unknown',
+    target_language: 'unknown',
+    translation: 'This is a test.',
+    segments: [],
+    notes: [],
+  }));
+
+  const response = await onRequest({
+    request: makeRequest({ text: '这是一个测试。', mode: 'auto' }),
+    env: ENV,
+  });
+  const payload = await response.json();
+
+  assert.equal(payload.source_language, 'zh');
+  assert.equal(payload.target_language, 'en');
+});
+
 test('service can be disabled via env', async () => {
   const response = await onRequest({
     request: makeRequest({ text: 'Hello' }),

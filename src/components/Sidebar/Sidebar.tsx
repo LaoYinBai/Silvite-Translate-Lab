@@ -29,7 +29,7 @@ export function Sidebar({ onNewChat }: SidebarProps) {
           </div>
           <div>
             <h1 className="text-[16px] font-semibold tracking-[-0.01em] text-[#1a1a1a] leading-5">Silvite</h1>
-            <p className="text-[12px] text-[#777777] leading-4">翻译站</p>
+            <p className="text-[12px] text-[#777777] leading-4">多语言翻译站</p>
           </div>
         </div>
       </div>

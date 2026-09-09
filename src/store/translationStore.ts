@@ -24,8 +24,8 @@ export interface TranslationNote {
 }
 
 export interface TranslationResult {
-  sourceLanguage: 'zh' | 'en';
-  targetLanguage: 'en' | 'zh';
+  sourceLanguage: string;
+  targetLanguage: string;
   translation: string;
   detectedText?: string;
   segments: TranslationSegment[];

@@ -28,8 +28,20 @@ export function formatTimestamp(date: Date): string {
 const LANGUAGE_LABELS: Record<string, string> = {
   zh: '中文',
   en: 'English',
+  ja: '日本語',
+  ko: '한국어',
+  fr: 'Français',
+  es: 'Español',
+  de: 'Deutsch',
+  ru: 'Русский',
+  pt: 'Português',
+  it: 'Italiano',
+  th: 'ไทย',
+  vi: 'Tiếng Việt',
 };
 
 export function languageLabel(code: string): string {
-  return LANGUAGE_LABELS[code] || code;
+  if (!code) return '—';
+  const base = code.toLowerCase().split('-')[0];
+  return LANGUAGE_LABELS[base] || code.toUpperCase();
 }

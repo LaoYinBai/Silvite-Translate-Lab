@@ -227,7 +227,7 @@ export function InputArea() {
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="输入要翻译的文本，或拖拽图片到此区域..."
+            placeholder="输入任意语言的文本，或拖拽图片到此区域。中文译为英文，其他语言自动译入中文..."
             disabled={isLoading}
             rows={5}
             className="w-full resize-none border-none outline-none text-[17px] leading-[1.8] text-[#1a1a1a] placeholder:text-[#b0b0b0] bg-transparent min-h-[180px]"
