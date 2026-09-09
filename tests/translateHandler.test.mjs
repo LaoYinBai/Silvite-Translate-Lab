@@ -299,8 +299,54 @@ test('upstream HTTP error maps to upstream error event without provider detail',
   assert.doesNotMatch(error.message, /quota/);
 });
 
-test('stream interruption maps to interrupted error event', async () => {
+test('stream interruption resets provisional text and retries with the same budget', async () => {
+  let calls = 0;
+  const budgets = [];
+  globalThis.fetch = async (url, init) => {
+    calls++;
+    budgets.push(JSON.parse(init.body).max_completion_tokens);
+    if (calls === 2) {
+      return mimoSseResponse(JSON.stringify({
+        source_language: 'en',
+        target_language: 'zh',
+        translation: '完整重试译文',
+        segments: [],
+        notes: [],
+      }));
+    }
+
+    const encoder = new TextEncoder();
+    let sentChunk = false;
+    return new Response(new ReadableStream({
+      pull(controller) {
+        if (sentChunk) {
+          controller.error(new Error('connection reset'));
+          return;
+        }
+        sentChunk = true;
+        const event = { choices: [{ delta: { content: '{"translation":"半篇译文' } }] };
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+      },
+    }), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+  };
+
+  const response = await onRequest({
+    request: makeRequest({ text: 'Hello', mode: 'auto' }),
+    env: ENV,
+  });
+  const events = await readSseEvents(response);
+
+  assert.equal(calls, 2);
+  assert.deepEqual(budgets, [4096, 4096]);
+  assert.deepEqual(events.map((event) => event.type), ['start', 'delta', 'reset', 'delta', 'final']);
+  assert.equal(events[2].reason, 'stream_interrupted');
+  assert.equal(finalEventOf(events).translation, '完整重试译文');
+});
+
+test('two stream interruptions map to interrupted error event', async () => {
+  let calls = 0;
   globalThis.fetch = async () => {
+    calls++;
     const encoder = new TextEncoder();
     return new Response(new ReadableStream({
       start(controller) {
@@ -316,6 +362,7 @@ test('stream interruption maps to interrupted error event', async () => {
   });
   const events = await readSseEvents(response);
 
+  assert.equal(calls, 2);
   const error = events.find((e) => e.type === 'error');
   assert.equal(error.code, 'MODEL_STREAM_INTERRUPTED');
   assert.ok(!events.some((e) => e.type === 'final'));
