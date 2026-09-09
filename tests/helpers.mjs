@@ -16,10 +16,18 @@ export function mimoSseResponse(content, { finishReason = 'stop' } = {}) {
   });
 }
 
-// Parses the NDJSON response body into events.
-export async function readNdjson(response) {
+// Parses the SSE response body into application events (data: JSON lines).
+export async function readSseEvents(response) {
   const text = await response.text();
-  return text.split('\n').filter(Boolean).map((line) => JSON.parse(line));
+  const events = [];
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data:')) continue;
+    const payload = trimmed.slice(5).trim();
+    if (!payload) continue;
+    events.push(JSON.parse(payload));
+  }
+  return events;
 }
 
 export function finalEventOf(events) {

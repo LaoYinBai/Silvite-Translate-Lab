@@ -510,7 +510,7 @@ function routeTarget(source) {
   return source === 'zh' ? 'en' : 'zh';
 }
 
-// ---- Streaming internals (MiMo SSE in, Silvite NDJSON out) ----
+// ---- Streaming internals (MiMo SSE in, Silvite SSE out) ----
 
 // Application-layer stream protocol. The frontend never sees MiMo's SSE or
 // any provider detail - only these events, one JSON object per line.
@@ -920,7 +920,7 @@ export async function onRequest(context) {
     const stream = new ReadableStream({
       async start(controller) {
         const encoder = new TextEncoder();
-        const send = (event) => controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'));
+        const send = (event) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
 
         try {
           send({ type: 'start', mode: composition.mode });
@@ -1052,8 +1052,8 @@ export async function onRequest(context) {
       status: 200,
       headers: {
         ...headers,
-        'Content-Type': 'application/x-ndjson; charset=utf-8',
-        'Cache-Control': 'no-store',
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
       },
     });
   } catch (error) {

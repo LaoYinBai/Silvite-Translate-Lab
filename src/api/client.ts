@@ -81,18 +81,21 @@ export async function translateStream(
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
+  // SSE framing: events are "data: <JSON>" lines terminated by a blank line.
+  // The buffer is split into lines; a complete event is dispatched when the
+  // blank-line terminator arrives.
   let buffer = '';
+  let dataLine = '';
+  let dataSeen = false;
   let finalResult: TranslationResponse | null = null;
   let lastError: { code?: string; message: string } | null = null;
 
-  const processLine = (line: string) => {
-    const trimmed = line.trim();
-    if (!trimmed) return;
+  const dispatchEvent = (payload: string) => {
     let event: TranslationStreamEvent;
     try {
-      event = JSON.parse(trimmed) as TranslationStreamEvent;
+      event = JSON.parse(payload) as TranslationStreamEvent;
     } catch {
-      // Malformed event line: skip it, the stream stays alive.
+      // Malformed event payload: skip it, the stream stays alive.
       return;
     }
     switch (event.type) {
@@ -118,19 +121,41 @@ export async function translateStream(
     }
   };
 
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+  const processLine = (rawLine: string) => {
+    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+    if (!line) {
+      // Blank line terminates the current event (handles \n\n and \r\n\r\n).
+      if (dataSeen) dispatchEvent(dataLine);
+      dataLine = '';
+      dataSeen = false;
+      return;
+    }
+    if (line.startsWith('data:')) {
+      const value = line.slice(5);
+      dataLine += (dataSeen ? '\n' : '') + value.trimStart();
+      dataSeen = true;
+    }
+    // Non-data lines (comments, unknown fields) are ignored.
+  };
+
+  const consumeBuffer = (chunk: string) => {
+    buffer += chunk;
     let newlineAt: number;
     while ((newlineAt = buffer.indexOf('\n')) !== -1) {
       const line = buffer.slice(0, newlineAt);
       buffer = buffer.slice(newlineAt + 1);
       processLine(line);
     }
+  };
+
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    consumeBuffer(decoder.decode(value, { stream: true }));
   }
-  buffer += decoder.decode();
-  if (buffer.trim()) processLine(buffer);
+  consumeBuffer(decoder.decode());
+  // Flush a trailing event that lacks its final blank line.
+  if (dataSeen) dispatchEvent(dataLine);
 
   if (finalResult) return finalResult;
   // lastError is assigned inside processLine; TS flow analysis cannot see it,

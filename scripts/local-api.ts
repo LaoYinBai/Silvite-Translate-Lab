@@ -43,7 +43,7 @@ const server = createServer(async (req, res) => {
       responseHeaders[key] = value;
     });
 
-    // Stream the body incrementally (NDJSON streaming must reach the browser
+    // Stream the body incrementally (SSE streaming must reach the browser
     // chunk by chunk, not as one buffered blob).
     res.writeHead(response.status, responseHeaders);
     if (response.body) {
