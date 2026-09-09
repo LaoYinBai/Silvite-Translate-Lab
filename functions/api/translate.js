@@ -243,8 +243,27 @@ function parseModelContent(content, fallback) {
   };
 }
 
+// Accepts any BCP-47-ish two-letter code (zh, en, ja, ko, fr, zh-CN, ...).
 function normalizeLang(value, fallback) {
-  return value === 'zh' || value === 'en' ? value : fallback;
+  if (typeof value === 'string') {
+    const trimmed = value.trim().toLowerCase();
+    if (/^[a-z]{2}(-[a-z]{2})?$/.test(trimmed)) return trimmed;
+  }
+  return fallback;
+}
+
+// Local heuristic used only when the model fails to report a language.
+function detectLanguage(text) {
+  if (!text) return 'zh';
+  if (/[\u3040-\u30ff]/.test(text)) return 'ja';
+  if (/[\uac00-\ud7af]/.test(text)) return 'ko';
+  if (/[\u4e00-\u9fff]/.test(text)) return 'zh';
+  return 'en';
+}
+
+// Fixed routing: Chinese -> English; every other language -> Chinese.
+function routeTarget(source) {
+  return source === 'zh' ? 'en' : 'zh';
 }
 
 export async function onRequest(context) {
@@ -346,10 +365,10 @@ export async function onRequest(context) {
       return new Response(JSON.stringify({ error: 'Empty response from translation service' }), { status: 502, headers });
     }
 
-    const isChinese = /[\u4e00-\u9fa5]/.test(text || '');
+    const fallbackSource = detectLanguage(text || '');
     const fallback = {
-      sourceLanguage: isChinese ? 'zh' : 'en',
-      targetLanguage: isChinese ? 'en' : 'zh',
+      sourceLanguage: fallbackSource,
+      targetLanguage: routeTarget(fallbackSource),
       detectedStyle: composition.mode,
     };
 
@@ -359,7 +378,7 @@ export async function onRequest(context) {
     return new Response(
       JSON.stringify({
         source_language: sourceLanguage,
-        target_language: normalizeLang(parsed.target_language, sourceLanguage === 'zh' ? 'en' : 'zh'),
+        target_language: normalizeLang(parsed.target_language, routeTarget(sourceLanguage)),
         // For explicit modes the requested style IS the style; the model's own
         // classification is only meaningful for auto mode.
         detected_style: composition.mode !== 'auto' ? composition.mode : (parsed.detected_style || fallback.detectedStyle),

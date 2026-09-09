@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslationStore } from '../../store/translationStore';
 import { ExportMenu } from '../ExportMenu/ExportMenu';
+import { languageLabel } from '../../services/export/types';
 
 export function ResultArea() {
   const { result, isLoading, error } = useTranslationStore();
@@ -93,13 +94,13 @@ function ResultCard({ result }: { result: any }) {
       <div className="flex items-center justify-between px-7 py-5 bg-[#fafafa] border-b border-[#f0f0f0] rounded-t-xl">
         <div className="flex items-center gap-3">
           <span className="text-[15px] font-medium text-[#1a1a1a]">
-            {result.sourceLanguage === 'zh' ? '中文' : '英文'}
+            {languageLabel(result.sourceLanguage)}
           </span>
-          <svg width="18" height="18" viewBox="0 0 12 12" fill="none" className="text-[#888888]">
+          <svg width="18" height="18" viewBox="0 0 12 12" fill="none" className="text-[#888888]" aria-hidden="true">
             <path d="M2.5 6h7m0 0L6 3m3.5 3L6 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
           <span className="text-[15px] font-medium text-[#1a1a1a]">
-            {result.targetLanguage === 'zh' ? '中文' : '英文'}
+            {languageLabel(result.targetLanguage)}
           </span>
         </div>
         

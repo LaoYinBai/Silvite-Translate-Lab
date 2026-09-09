@@ -11,8 +11,8 @@ export interface TranslationRequest {
 }
 
 export interface TranslationResponse {
-  source_language: 'zh' | 'en';
-  target_language: 'en' | 'zh';
+  source_language: string;
+  target_language: string;
   detected_style?: 'natural' | 'literary' | 'academic' | 'business' | 'comic';
   translation: string;
   detected_text?: string | null;
