@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { translate as apiTranslate } from '../api/client';
+import { translate as apiTranslate, API_BASE_URL } from '../api/client';
 
 export type TranslationMode = 
   | 'auto'
@@ -66,6 +66,7 @@ interface TranslationState {
   setIsLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   setServiceOnline: (online: boolean) => void;
+  checkService: () => Promise<void>;
   translate: () => Promise<void>;
   reset: () => void;
 }
@@ -98,6 +99,14 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   setIsLoading: (loading) => set({ isLoading: loading }),
   setError: (error) => set({ error }),
   setServiceOnline: (online) => set({ isServiceOnline: online }),
+  checkService: async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/translate`, { method: 'OPTIONS' });
+      set({ isServiceOnline: response.ok });
+    } catch {
+      set({ isServiceOnline: false });
+    }
+  },
   
   translate: async () => {
     const state = get();
@@ -121,7 +130,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
           sourceLanguage: response.source_language,
           targetLanguage: response.target_language,
           translation: response.translation,
-          detectedText: response.detected_text,
+          detectedText: response.detected_text || undefined,
           segments: (response.segments || []).map(s => ({
             ...s,
             type: s.type as 'dialogue' | 'narration' | 'sound_effect' | 'text'
@@ -130,24 +139,10 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
         },
         isLoading: false
       });
-} catch (error) {
-  console.error(
-    '[Silvite Translate Lab] Real MiMo API failed, falling back to demo mode:',
-    error
-  );
-
-  // Fallback to demo mode
-      const isChinese = /[\u4e00-\u9fa5]/.test(state.inputText);
+    } catch (err) {
       set({
-        result: {
-          sourceLanguage: isChinese ? 'zh' : 'en',
-          targetLanguage: isChinese ? 'en' : 'zh',
-          translation: state.inputText + '\n\n[演示模式——请配置 API 以使用真实翻译]',
-          segments: [],
-          notes: []
-        },
         isLoading: false,
-        error: null
+        error: err instanceof Error ? err.message : '翻译服务暂时不可用，请稍后重试'
       });
     }
   },
