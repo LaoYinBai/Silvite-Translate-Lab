@@ -68,6 +68,8 @@ export function InputArea() {
     setInputImage, 
     inputMode, 
     setInputMode,
+    imageSource,
+    openPreview,
     mode,
     setMode,
     context,
@@ -163,10 +165,15 @@ export function InputArea() {
     return () => document.removeEventListener('paste', handlePaste);
   }, [processFile]);
   
+  // Removes the current user image but stays in image mode; the panel then
+  // shows the add-image dropzone again. Demo images never get this button.
   const clearImage = useCallback(() => {
     setInputImage(null);
-    setInputMode('text');
-  }, [setInputImage, setInputMode]);
+  }, [setInputImage]);
+
+  const handleReplaceImage = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
   
   const handleTranslate = useCallback(() => {
     if (!inputText.trim() && !inputImage) return;
@@ -199,41 +206,85 @@ export function InputArea() {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        {/* Image preview — only in image mode, so a leftover image can never
-            overlay text editing or a demo state */}
+        {/* Image mode: fully replaces the text panel. The textarea is never
+            rendered here. Demo images show preview only (no remove/replace). */}
+        {inputMode === 'image' && !inputImage && (
+          <div className="p-6">
+            <button
+              type="button"
+              onClick={handleReplaceImage}
+              className="w-full min-h-[220px] rounded-xl border-2 border-dashed border-[#d9d9d9] hover:border-[#1677ff] hover:bg-[#f7fbff] transition-colors flex flex-col items-center justify-center gap-2 text-center cursor-pointer"
+            >
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="3" y="5" width="18" height="14" rx="2" stroke="#b0b0b0" strokeWidth="1.6"/>
+                <circle cx="9" cy="10" r="1.6" stroke="#b0b0b0" strokeWidth="1.6"/>
+                <path d="M3.5 16.5l4.5-4 3 2.5 4-3.5 5.5 5" stroke="#b0b0b0" strokeWidth="1.6" strokeLinejoin="round"/>
+              </svg>
+              <span className="text-[15px] font-medium text-[#555555]">
+                <span className="hidden md:inline">拖入图片，或点击选择</span>
+                <span className="md:hidden">添加图片</span>
+              </span>
+              <span className="text-[12px] text-[#999999]">JPG / PNG / WebP · 最大 10MB</span>
+            </button>
+          </div>
+        )}
+
         {inputMode === 'image' && inputImage && (
-          <div className="p-5 pb-0">
-            <div className="relative inline-block">
-              <img 
-                src={inputImage} 
-                alt="已上传图片" 
-                className="h-28 rounded-lg object-cover border border-[#e0e0e0]"
-              />
+          <div className="p-6">
+            <div className="flex flex-col items-center gap-3">
               <button
-                onClick={clearImage}
-                className="absolute -top-2 -right-2 w-7 h-7 bg-[#666666] hover:bg-[#ff4d4f] text-white rounded-full flex items-center justify-center transition-colors"
-                title="移除图片"
+                type="button"
+                onClick={() => openPreview(inputImage, imageSource === 'demo' ? '演示样本图片' : '已上传图片')}
+                title="点击查看大图"
+                className="group relative rounded-lg overflow-hidden border border-[#e0e0e0] hover:border-[#1677ff] transition-colors cursor-zoom-in"
               >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
+                <img
+                  src={inputImage}
+                  alt={imageSource === 'demo' ? '演示样本图片' : '已上传图片'}
+                  className="max-h-[360px] max-w-full w-auto object-contain"
+                  draggable={false}
+                />
+                <span className="absolute bottom-2 right-2 flex items-center gap-1 px-2 py-1 rounded-md bg-black/55 text-white text-[11px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                  <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.5"/>
+                    <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    <path d="M7 5v4M5 7h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                  </svg>
+                  查看大图
+                </span>
               </button>
+
+              {imageSource === 'demo' ? (
+                <p className="text-[12px] text-[#999999]">演示样本图片 · 点击图片可放大预览</p>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={handleReplaceImage} className="btn btn-secondary h-[36px]">
+                    更换图片
+                  </button>
+                  <button type="button" onClick={clearImage} className="btn btn-ghost h-[36px]">
+                    删除
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
-        
-        {/* Textarea */}
-        <div className="p-6 pb-4">
-          <textarea
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="输入任意语言的文本，或拖拽图片到此区域。中文译为英文，其他语言自动译入中文..."
-            disabled={isLoading}
-            rows={5}
-            className="w-full resize-none border-none outline-none text-[17px] leading-[1.8] text-[#1a1a1a] placeholder:text-[#b0b0b0] bg-transparent min-h-[180px]"
-          />
-        </div>
+
+        {/* Text mode: the classic textarea panel. Mutually exclusive with the
+            image panels above. */}
+        {inputMode === 'text' && (
+          <div className="p-6 pb-4">
+            <textarea
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="输入任意语言的文本。中文译为英文，其他语言自动译入中文..."
+              disabled={isLoading}
+              rows={5}
+              className="w-full resize-none border-none outline-none text-[17px] leading-[1.8] text-[#1a1a1a] placeholder:text-[#b0b0b0] bg-transparent min-h-[180px]"
+            />
+          </div>
+        )}
         
         {/* Bottom toolbar */}
         <div className="flex items-center justify-between px-5 py-4 border-t border-[#f0f0f0]">

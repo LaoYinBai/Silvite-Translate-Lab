@@ -12,6 +12,16 @@ export type TranslationMode =
 
 export type InputMode = 'text' | 'image';
 
+// Where the current image came from. Demo images are fixed sample content
+// (no remove/replace affordances); user images are real uploads.
+export type ImageSource = 'demo' | 'user' | null;
+
+// Pure UI state for the image lightbox. Never touches input/result data.
+export interface PreviewImage {
+  src: string;
+  alt: string;
+}
+
 export type TranslationSegmentType =
   | 'dialogue'
   | 'narration'
@@ -51,6 +61,10 @@ interface TranslationState {
   inputText: string;
   inputImage: string | null;
   inputMode: InputMode;
+  imageSource: ImageSource;
+
+  // Lightbox (pure UI; rendered by <Lightbox /> at the app root)
+  previewImage: PreviewImage | null;
   
   // Settings
   mode: TranslationMode;
@@ -80,6 +94,8 @@ interface TranslationState {
   setInputText: (text: string) => void;
   setInputImage: (image: string | null) => void;
   setInputMode: (mode: InputMode) => void;
+  openPreview: (src: string, alt: string) => void;
+  closePreview: () => void;
   setMode: (mode: TranslationMode) => void;
   setContext: (context: string) => void;
   setTerminology: (terminology: string) => void;
@@ -100,6 +116,8 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   inputText: '',
   inputImage: null,
   inputMode: 'text',
+  imageSource: null,
+  previewImage: null,
   
   mode: 'auto',
   context: '',
@@ -123,12 +141,21 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       ? { inputText: text, isDemoMode: false, activeDemoId: null, result: null, error: null }
       : { inputText: text }
   )),
-  setInputImage: (image) => set((s) => (
-    image && s.isDemoMode
-      ? { inputImage: image, isDemoMode: false, activeDemoId: null, result: null, error: null }
-      : { inputImage: image }
-  )),
+  // A non-null image is always a real upload here (demo images are attached
+  // directly inside loadDemoSample). Any image change closes the lightbox so
+  // a stale preview can never outlive the image it showed.
+  setInputImage: (image) => set((s) => {
+    if (image && s.isDemoMode) {
+      return { inputImage: image, imageSource: 'user', isDemoMode: false, activeDemoId: null, result: null, error: null, previewImage: null };
+    }
+    if (!image) {
+      return { inputImage: null, imageSource: null, previewImage: null };
+    }
+    return { inputImage: image, imageSource: 'user', previewImage: null };
+  }),
   setInputMode: (mode) => set({ inputMode: mode }),
+  openPreview: (src, alt) => set({ previewImage: { src, alt } }),
+  closePreview: () => set({ previewImage: null }),
   setMode: (mode) => set({ mode }),
   setContext: (context) => set({ context }),
   setTerminology: (terminology) => set({ terminology }),
@@ -160,6 +187,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       inputText: demo.inputType === 'text' ? demo.source : '',
       inputImage: null,
       inputMode: demo.inputType,
+      imageSource: demo.inputType === 'image' ? 'demo' : null,
       mode: demo.mode,
       context: demo.context ?? '',
       terminology: demo.terminology ?? '',
@@ -169,6 +197,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       error: null,
       isDemoMode: true,
       activeDemoId: demo.id,
+      previewImage: null,
     });
 
     if (demo.inputType === 'image' && demo.demoImage) {
@@ -197,7 +226,16 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
     if (!state.inputText.trim() && !state.inputImage) return;
     
     // Translating is a real action: exit demo and drop any demo result.
-    set({ isLoading: true, error: null, isDemoMode: false, activeDemoId: null, result: null });
+    // A demo image being translated has been adopted as real content, so it
+    // becomes a user image (full remove/replace affordances from now on).
+    set({
+      isLoading: true,
+      error: null,
+      isDemoMode: false,
+      activeDemoId: null,
+      result: null,
+      imageSource: state.imageSource === 'demo' ? 'user' : state.imageSource,
+    });
     
     try {
       const response = await apiTranslate({
@@ -236,9 +274,11 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   reset: () => set({
     inputText: '',
     inputImage: null,
+    imageSource: null,
     result: null,
     error: null,
     isDemoMode: false,
-    activeDemoId: null
+    activeDemoId: null,
+    previewImage: null,
   })
 }));
