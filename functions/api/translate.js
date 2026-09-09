@@ -6,7 +6,6 @@ import {
   BUSINESS_PROMPT,
   COMIC_PROMPT,
   AUTO_MODE_INSTRUCTION,
-  SAFE_BASE_FALLBACK,
 } from './prompts.mjs';
 
 export const SUPPORTED_TRANSLATION_MODES = ['auto', 'natural', 'literary', 'academic', 'business', 'comic'];
