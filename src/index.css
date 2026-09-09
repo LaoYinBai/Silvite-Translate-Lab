@@ -29,8 +29,10 @@
 
 * {
   box-sizing: border-box;
+}
+
+body {
   margin: 0;
-  padding: 0;
 }
 
 html {
@@ -224,53 +226,6 @@ body {
 /* Input styles */
 textarea, input[type="text"] {
   font-family: var(--font-sans);
-}
-
-/* Sidebar spacing is scoped here because the global reset follows Tailwind's
-   utility layer and intentionally wins the cascade across the legacy UI. */
-.silvite-sidebar__brand {
-  padding-inline: 20px;
-}
-
-.silvite-sidebar__action {
-  padding: 16px 16px 20px;
-}
-
-.silvite-sidebar__nav {
-  padding-inline: 12px;
-}
-
-.silvite-sidebar__section-label {
-  margin-bottom: 8px;
-  padding-inline: 8px;
-}
-
-.silvite-sidebar__current {
-  padding: 12px;
-}
-
-.silvite-sidebar__current-copy {
-  padding-top: 2px;
-}
-
-.silvite-sidebar__current-subtitle {
-  margin-top: 2px;
-}
-
-.silvite-sidebar__footer {
-  padding: 0 16px 16px;
-}
-
-.silvite-sidebar__shortcuts {
-  padding: 14px;
-}
-
-.silvite-sidebar__shortcut-heading {
-  margin-bottom: 8px;
-}
-
-.silvite-sidebar__meta {
-  padding: 16px 4px 0;
 }
 
 /* ---------- Dark theme ----------
