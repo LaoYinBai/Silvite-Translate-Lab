@@ -7,6 +7,8 @@ const MAX_SIZE = 10 * 1024 * 1024;
 // serialized data URL safely below that; larger images are re-encoded.
 const MAX_DATA_URL_LENGTH = 700_000;
 const RAW_IMAGE_LIMIT = 500 * 1024;
+// Mirrors the backend MAX_INPUT_LENGTH default (server remains the authority).
+const MAX_INPUT_CHARS = 20000;
 
 function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -146,7 +148,8 @@ function ClearButton({ inputText, inputImage, onClear, className }: {
 
 function TranslateButton({ className = '' }: { className?: string }) {
   const { inputText, inputImage, isLoading } = useTranslationStore();
-  const hasInput = Boolean(inputText.trim()) || Boolean(inputImage);
+  const overLimit = inputText.length > MAX_INPUT_CHARS;
+  const hasInput = (Boolean(inputText.trim()) && !overLimit) || Boolean(inputImage);
   return (
     <button
       onClick={() => useTranslationStore.getState().translate()}
@@ -287,6 +290,7 @@ export function InputArea() {
   }, []);
   
   const handleTranslate = useCallback(() => {
+    if (inputText.length > MAX_INPUT_CHARS) return;
     if (!inputText.trim() && !inputImage) return;
     useTranslationStore.getState().translate();
   }, [inputText, inputImage]);
@@ -394,6 +398,17 @@ export function InputArea() {
               rows={5}
               className="w-full resize-none border-none outline-none text-[17px] leading-[1.8] text-[#1a1a1a] placeholder:text-[#b0b0b0] bg-transparent min-h-[140px] md:min-h-[180px]"
             />
+            {inputText.length > 0 && (
+              <div
+                className={`text-right text-[12px] mt-1 ${
+                  inputText.length > MAX_INPUT_CHARS ? 'text-[#ff4d4f]' : 'text-[#b0b0b0]'
+                }`}
+              >
+                {inputText.length > MAX_INPUT_CHARS
+                  ? `最多支持 20000 个字符（当前 ${inputText.length}）`
+                  : `${inputText.length} / 20000`}
+              </div>
+            )}
           </div>
         )}
         
