@@ -1,7 +1,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { onRequest, buildComicTranslation, enforceReplyOrders } from '../functions/api/translate.js';
-import { mimoSseResponse, readNdjson, finalEventOf, makeRequest } from './helpers.mjs';
+import { mimoSseResponse, readSseEvents, finalEventOf, makeRequest } from './helpers.mjs';
 
 const ENV = { MIMO_API_KEY: 'test-key', RATE_LIMIT: '100' };
 
@@ -96,7 +96,7 @@ test('T6: comic without segments falls back to parsed translation', async () => 
     request: makeRequest({ imageDataUrl: 'data:image/png;base64,AAAA', mode: 'comic' }),
     env: ENV,
   });
-  const payload = finalEventOf(await readNdjson(response));
+  const payload = finalEventOf(await readSseEvents(response));
 
   assert.equal(response.status, 200);
   assert.equal(payload.translation, '模型自由排版的译文');
@@ -123,7 +123,7 @@ test('comic + image + valid segments: translation is rebuilt deterministically',
     request: makeRequest({ imageDataUrl: 'data:image/png;base64,AAAA', mode: 'comic' }),
     env: ENV,
   });
-  const payload = finalEventOf(await readNdjson(response));
+  const payload = finalEventOf(await readSseEvents(response));
 
   assert.equal(payload.translation, '【女生】\n你太慢了\n\n【男生】\n抱歉');
   // Segments pass through with panel/order/speaker intact.
@@ -150,7 +150,7 @@ test('non-comic image mode keeps model free translation untouched', async () => 
     request: makeRequest({ imageDataUrl: 'data:image/png;base64,AAAA', mode: 'natural' }),
     env: ENV,
   });
-  const payload = finalEventOf(await readNdjson(response));
+  const payload = finalEventOf(await readSseEvents(response));
 
   assert.equal(payload.translation, '自然模式自由译文');
 });

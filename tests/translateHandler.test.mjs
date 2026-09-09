@@ -1,7 +1,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { onRequest } from '../functions/api/translate.js';
-import { mimoSseResponse, readNdjson, finalEventOf, makeRequest } from './helpers.mjs';
+import { mimoSseResponse, readSseEvents, finalEventOf, makeRequest } from './helpers.mjs';
 
 const ENV = { MIMO_API_KEY: 'test-key', RATE_LIMIT: '10' };
 
@@ -30,7 +30,7 @@ test('academic mode reaches MiMo with academic prompt, context and terminology',
     request: makeRequest({ text: 'Hello world', mode: 'academic', context: '论文摘要', terminology: 'PI3K 保留' }),
     env: ENV,
   });
-  const events = await readNdjson(response);
+  const events = await readSseEvents(response);
 
   assert.equal(response.status, 200);
   assert.equal(captured.model, 'mimo-v2.5');
@@ -65,7 +65,7 @@ test('unknown mode falls back to dynamic auto prompt', async () => {
     request: makeRequest({ text: '你好', mode: 'nonexistent' }),
     env: ENV,
   });
-  const events = await readNdjson(response);
+  const events = await readSseEvents(response);
 
   assert.match(captured.messages[0].content, /自动模式/);
   assert.doesNotMatch(captured.messages[0].content, /# 自然模式/);
@@ -90,7 +90,7 @@ test('comic image request combines comic prompt with visual input', async () => 
     request: makeRequest({ imageDataUrl: 'data:image/png;base64,iVBORw0KGgo=', mode: 'comic' }),
     env: ENV,
   });
-  const events = await readNdjson(response);
+  const events = await readSseEvents(response);
 
   assert.match(captured.messages[0].content, /漫画模式/);
   assert.equal(captured.messages[1].content[0].image_url.url, 'data:image/png;base64,iVBORw0KGgo=');
@@ -104,7 +104,7 @@ test('plain text model response keeps raw-text fallback via stream final', async
     request: makeRequest({ text: 'Hello', mode: 'auto' }),
     env: ENV,
   });
-  const events = await readNdjson(response);
+  const events = await readSseEvents(response);
 
   const final = finalEventOf(events);
   assert.equal(final.translation, '这不是 JSON');
@@ -134,7 +134,7 @@ test('unescaped quotes in model JSON get repaired', async () => {
     request: makeRequest({ text: '我们坐在河边的银行上看夕阳。', mode: 'auto' }),
     env: ENV,
   });
-  const events = await readNdjson(response);
+  const events = await readSseEvents(response);
 
   const final = finalEventOf(events);
   assert.equal(final.translation, 'We sat on the riverbank.');
@@ -155,7 +155,7 @@ test('model reporting unknown language gets normalized', async () => {
     request: makeRequest({ text: 'Bonjour', mode: 'auto' }),
     env: ENV,
   });
-  const events = await readNdjson(response);
+  const events = await readSseEvents(response);
 
   assert.equal(finalEventOf(events).source_language, 'en');
   assert.equal(finalEventOf(events).target_language, 'zh');
@@ -174,7 +174,7 @@ test('non-Chinese non-English languages route to Chinese', async () => {
     request: makeRequest({ text: 'これはテストです。', mode: 'auto' }),
     env: ENV,
   });
-  const events = await readNdjson(response);
+  const events = await readSseEvents(response);
 
   const final = finalEventOf(events);
   assert.equal(final.source_language, 'ja');
@@ -195,7 +195,7 @@ test('Chinese input routes to English via heuristic fallback', async () => {
     request: makeRequest({ text: '这是一个测试。', mode: 'auto' }),
     env: ENV,
   });
-  const events = await readNdjson(response);
+  const events = await readSseEvents(response);
 
   assert.equal(finalEventOf(events).source_language, 'zh');
   assert.equal(finalEventOf(events).target_language, 'en');
@@ -221,7 +221,7 @@ test('truncated structured output emits error event, never raw translation', asy
     request: makeRequest({ text: 'Hello', mode: 'literary' }),
     env: ENV,
   });
-  const events = await readNdjson(response);
+  const events = await readSseEvents(response);
 
   assert.equal(calls, 2);
   assert.equal(finalEventOf(events).translation, '第二次完整输出');
@@ -239,7 +239,7 @@ test('double truncation ends with error event and Chinese message', async () => 
     request: makeRequest({ text: 'Hello', mode: 'literary' }),
     env: ENV,
   });
-  const events = await readNdjson(response);
+  const events = await readSseEvents(response);
 
   assert.equal(calls, 2);
   const error = events.find((e) => e.type === 'error');
@@ -265,7 +265,7 @@ test('empty first attempt retries once and succeeds', async () => {
     request: makeRequest({ text: 'Hello', mode: 'auto' }),
     env: ENV,
   });
-  const events = await readNdjson(response);
+  const events = await readSseEvents(response);
 
   assert.equal(calls, 2);
   assert.equal(finalEventOf(events).translation, '重试成功');
@@ -278,7 +278,7 @@ test('empty twice ends with empty-response error', async () => {
     request: makeRequest({ text: 'Hello', mode: 'auto' }),
     env: ENV,
   });
-  const events = await readNdjson(response);
+  const events = await readSseEvents(response);
 
   const error = events.find((e) => e.type === 'error');
   assert.equal(error.code, 'MODEL_EMPTY_RESPONSE');
@@ -292,7 +292,7 @@ test('upstream HTTP error maps to upstream error event without provider detail',
     request: makeRequest({ text: 'Hello', mode: 'auto' }),
     env: ENV,
   });
-  const events = await readNdjson(response);
+  const events = await readSseEvents(response);
 
   const error = events.find((e) => e.type === 'error');
   assert.equal(error.code, 'MODEL_UPSTREAM_ERROR');
@@ -314,7 +314,7 @@ test('stream interruption maps to interrupted error event', async () => {
     request: makeRequest({ text: 'Hello', mode: 'auto' }),
     env: ENV,
   });
-  const events = await readNdjson(response);
+  const events = await readSseEvents(response);
 
   const error = events.find((e) => e.type === 'error');
   assert.equal(error.code, 'MODEL_STREAM_INTERRUPTED');
@@ -342,7 +342,7 @@ test('retry emits reset after streamed deltas, then fresh deltas and final', asy
     request: makeRequest({ text: 'Hello', mode: 'literary' }),
     env: ENV,
   });
-  const events = await readNdjson(response);
+  const events = await readSseEvents(response);
 
   assert.equal(calls, 2);
   const types = events.map((e) => e.type);
@@ -371,12 +371,50 @@ test('comic mode streams no translation deltas (final only)', async () => {
     request: makeRequest({ imageDataUrl: 'data:image/png;base64,AAAA', mode: 'comic' }),
     env: ENV,
   });
-  const events = await readNdjson(response);
+  const events = await readSseEvents(response);
 
   const types = events.map((e) => e.type);
   assert.deepEqual(types, ['start', 'final']);
   const final = finalEventOf(events);
   assert.equal(final.translation, '【女生】\n你太慢了\n\n【男生】\n抱歉');
+});
+
+test('SSE frame split mid-event still parses (transport framing)', async () => {
+  globalThis.fetch = async () => {
+    const inner = JSON.stringify({
+      source_language: 'en',
+      target_language: 'zh',
+      translation: '分段帧',
+      segments: [],
+      notes: [],
+    });
+    const sseText =
+      `data: ${JSON.stringify({ choices: [{ delta: { content: inner }, finish_reason: null }] })}\n\n` +
+      `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] })}\n\n` +
+      'data: [DONE]\n\n';
+    // Byte-split the stream at arbitrary points: lines and events straddle
+    // network chunk boundaries.
+    const bytes = new TextEncoder().encode(sseText);
+    const cut1 = Math.floor(bytes.length / 3);
+    const cut2 = Math.floor((bytes.length * 2) / 3);
+    return new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(bytes.slice(0, cut1));
+        controller.enqueue(bytes.slice(cut1, cut2));
+        controller.enqueue(bytes.slice(cut2));
+        controller.close();
+      },
+    }), { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+  };
+
+  const response = await onRequest({
+    request: makeRequest({ text: 'Hello', mode: 'auto' }),
+    env: ENV,
+  });
+  const events = await readSseEvents(response);
+
+  assert.deepEqual(events.map((e) => e.type), ['start', 'delta', 'final']);
+  assert.equal(finalEventOf(events).translation, '分段帧');
 });
 
 test('service can be disabled via env', async () => {
