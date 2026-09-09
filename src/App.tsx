@@ -13,10 +13,18 @@ function App() {
   } = useTranslationStore();
   
   const [mobileSamplesOpen, setMobileSamplesOpen] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => (
+    localStorage.getItem('silvite-theme') === 'dark' ? 'dark' : 'light'
+  ));
 
   useEffect(() => {
     checkService();
   }, [checkService]);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', theme === 'dark');
+    localStorage.setItem('silvite-theme', theme);
+  }, [theme]);
 
   const handleNewChat = () => {
     useTranslationStore.getState().reset();
@@ -25,11 +33,12 @@ function App() {
   const hasResult = result || isLoading;
 
   return (
-    <div className="flex h-full bg-white">
+    // App shell: 10px breathing space (left/top/bottom) + 10px gap to main.
+    // Sidebar is a flex item, so the shell padding owns the offset.
+    <div className="flex h-full bg-white pt-[10px] pb-[10px] pl-[10px] pr-0 gap-[10px]">
       {/* Sidebar - hidden on small screens; samples open in a drawer.
-          Floating grey panel on a white page (Qwen-style): the contrast,
-          not a border, is what makes the panel visible. */}
-      <div className="hidden md:block ml-[10px] my-[10px] h-[calc(100%-20px)] rounded-2xl bg-[#f6f7f9] overflow-hidden">
+          Desktop: fixed-width floating panel, rounded, clipped by itself. */}
+      <div className="hidden md:block w-[280px] flex-shrink-0 rounded-[10px] overflow-hidden">
         <Sidebar onNewChat={handleNewChat} />
       </div>
       
@@ -151,6 +160,26 @@ function App() {
 
       {/* Image lightbox — rendered at the app root so no layout clips it */}
       <Lightbox />
+
+      {/* Theme toggle — top-right of the viewport, above all layout */}
+      <button
+        type="button"
+        onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+        aria-label={theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'}
+        title={theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'}
+        className="fixed top-[14px] right-[14px] z-[60] w-9 h-9 rounded-full flex items-center justify-center text-[#555555] hover:text-[#1a1a1a] hover:bg-[#f0f0f0] transition-colors"
+      >
+        {theme === 'dark' ? (
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="12" r="4.2" stroke="currentColor" strokeWidth="1.7" />
+            <path d="M12 3v2.2M12 18.8V21M3 12h2.2M18.8 12H21M5.6 5.6l1.6 1.6M16.8 16.8l1.6 1.6M18.4 5.6l-1.6 1.6M7.2 16.8l-1.6 1.6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+          </svg>
+        ) : (
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M20.5 14.2A8.3 8.3 0 019.8 3.5 8.3 8.3 0 1020.5 14.2z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+          </svg>
+        )}
+      </button>
     </div>
   );
 }
