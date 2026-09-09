@@ -73,6 +73,19 @@ test('raw plain text passes through as-is', () => {
   assert.equal(stream('这不是 JSON，就是纯文本。'), '这不是 JSON，就是纯文本。');
 });
 
+test('markdown-fenced JSON payload never leaks the fence or raw JSON', () => {
+  const payload = '```json\n{"source_language":"en","translation":"围栏内译文","notes":[]}\n```';
+  assert.equal(stream(payload), '围栏内译文');
+});
+
+test('fence split across chunks still resolves to structured mode', () => {
+  const payload = '```json\n{"translation":"跨块围栏"}';
+  const extractor = createStreamingTranslationExtractor();
+  assert.equal(extractor.feed('```js'), '');
+  assert.equal(extractor.feed('on\n{"transl'), '');
+  assert.equal(extractor.feed('ation":"跨块围栏"}'), '跨块围栏');
+});
+
 test('reset() starts a fresh attempt', () => {
   const extractor = createStreamingTranslationExtractor();
   extractor.feed('{"translation":"第一次');

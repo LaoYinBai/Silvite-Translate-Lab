@@ -1,4 +1,4 @@
-﻿import {
+import {
   BASE_PROMPT,
   NATURAL_PROMPT,
   LITERARY_PROMPT,
@@ -557,6 +557,7 @@ function failureEvent(code) {
 // provisional text.
 export function createStreamingTranslationExtractor() {
   let state = 'sniff';     // sniff | find_key | expect_colon | expect_quote | in_string | raw | done | dead
+  let sniffBuf = '';
   let depth = 0;
   let inString = false;    // scanning: inside any JSON string
   let escaped = false;     // scanning: previous char was a backslash
@@ -670,11 +671,39 @@ export function createStreamingTranslationExtractor() {
     feed(chunk) {
       if (state === 'done' || state === 'dead') return '';
       if (state === 'sniff') {
-        // Decide the mode from the first non-whitespace character.
-        const trimmed = chunk.trimStart();
-        if (!trimmed) return '';
-        state = trimmed[0] === '{' ? 'find_key' : 'raw';
-        chunk = trimmed;
+        // Decide the mode from the leading shape: '{' -> structured JSON,
+        // '```json' fence -> strip the fence line then re-decide, anything
+        // else -> raw plain text (the legacy fallback).
+        sniffBuf += chunk;
+        const trimmed = sniffBuf.trimStart();
+        if (!trimmed) { sniffBuf = ''; return ''; }
+
+        if (trimmed[0] === '`') {
+          // Possible markdown fence: wait for the first line (or give up
+          // waiting and treat as raw if it grows absurdly long).
+          const newlineAt = trimmed.indexOf('\n');
+          if (newlineAt === -1) {
+            if (trimmed.length > 64) { state = 'raw'; chunk = trimmed; sniffBuf = ''; }
+            else { return ''; }
+          } else {
+            const firstLine = trimmed.slice(0, newlineAt).trim();
+            const rest = trimmed.slice(newlineAt + 1).trimStart();
+            if (/^```/.test(firstLine)) {
+              if (!rest) { sniffBuf = ''; return ''; }
+              state = rest[0] === '{' ? 'find_key' : 'raw';
+              chunk = rest;
+              sniffBuf = '';
+            } else {
+              state = 'raw';
+              chunk = trimmed;
+              sniffBuf = '';
+            }
+          }
+        } else {
+          state = trimmed[0] === '{' ? 'find_key' : 'raw';
+          chunk = trimmed;
+          sniffBuf = '';
+        }
       }
       if (state === 'raw') return chunk;
       if (state === 'in_string') return processInStringChunk(chunk);
@@ -684,6 +713,7 @@ export function createStreamingTranslationExtractor() {
     // Fresh attempt: everything streamed so far is void.
     reset() {
       state = 'sniff';
+      sniffBuf = '';
       depth = 0;
       inString = false;
       escaped = false;

@@ -361,6 +361,64 @@ test('stream interruption maps to interrupted error event', async () => {
   assert.ok(!events.some((e) => e.type === 'final'));
 });
 
+test('retry emits reset after streamed deltas, then fresh deltas and final', async () => {
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    if (calls === 1) {
+      // Content that streams some provisional translation, then truncates.
+      return mimoSseResponse('{"source_language":"en","target_language":"zh","translation":"雨洗净了整', { finishReason: 'length' });
+    }
+    return mimoSseResponse(JSON.stringify({
+      source_language: 'en',
+      target_language: 'zh',
+      translation: '完整重试译文',
+      segments: [],
+      notes: [],
+    }));
+  };
+
+  const response = await onRequest({
+    request: makeRequest({ text: 'Hello', mode: 'literary' }),
+    env: ENV,
+  });
+  const events = await readNdjson(response);
+
+  assert.equal(calls, 2);
+  const types = events.map((e) => e.type);
+  assert.deepEqual(types, ['start', 'delta', 'reset', 'delta', 'final']);
+  const reset = events[2];
+  assert.equal(reset.reason, 'output_truncated');
+  assert.equal(events[1].text, '雨洗净了整');
+  assert.equal(events[3].text.startsWith('完整重试译文'), true);
+  assert.equal(finalEventOf(events).translation, '完整重试译文');
+});
+
+test('comic mode streams no translation deltas (final only)', async () => {
+  globalThis.fetch = async () => mimoSseResponse(JSON.stringify({
+    source_language: 'ja',
+    target_language: 'zh',
+    detected_style: 'comic',
+    translation: '模型自由排版',
+    segments: [
+      { id: 'b1', order: 1, speaker: '女生', type: 'dialogue', source: '遅いよ', translation: '你太慢了' },
+      { id: 'b2', order: 2, speaker: '男生', type: 'dialogue', source: 'ごめん', translation: '抱歉', reply_to: 'b1' },
+    ],
+    notes: [],
+  }));
+
+  const response = await onRequest({
+    request: makeRequest({ imageDataUrl: 'data:image/png;base64,AAAA', mode: 'comic' }),
+    env: ENV,
+  });
+  const events = await readNdjson(response);
+
+  const types = events.map((e) => e.type);
+  assert.deepEqual(types, ['start', 'final']);
+  const final = finalEventOf(events);
+  assert.equal(final.translation, '【女生】\n你太慢了\n\n【男生】\n抱歉');
+});
+
 test('service can be disabled via env', async () => {
   const response = await onRequest({
     request: makeRequest({ text: 'Hello' }),
