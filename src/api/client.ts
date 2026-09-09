@@ -33,7 +33,7 @@ export interface TranslationResponse {
   }>;
 }
 
-// Application-layer stream events (NDJSON, one JSON object per line).
+// Application-layer events framed as SSE data messages.
 // The frontend never sees MiMo's SSE or any provider protocol detail.
 export type TranslationStreamEvent =
   | { type: 'start'; mode: string }
@@ -51,15 +51,25 @@ export interface TranslationStreamHandlers {
   onError?: (error: { code?: string; message: string }) => void;
 }
 
+class TranslationServiceError extends Error {
+  code?: string;
+
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = 'TranslationServiceError';
+    this.code = code;
+  }
+}
+
 /**
  * All model calls go through the EdgeOne edge function at /api/translate.
  * The MiMo API key never reaches the frontend bundle.
  *
- * Streaming: POST returns an NDJSON stream (start/delta/reset/final/error).
+ * Streaming: POST returns a custom SSE stream (start/delta/reset/final/error).
  * translateStream() consumes it incrementally; the promise resolves with the
  * canonical final result or rejects on transport errors / error events.
  */
-export async function translateStream(
+async function translateStreamOnce(
   request: TranslationRequest,
   handlers: TranslationStreamHandlers,
   signal?: AbortSignal,
@@ -73,7 +83,7 @@ export async function translateStream(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `HTTP ${response.status}`);
+    throw new TranslationServiceError(error.error || `HTTP ${response.status}`);
   }
   if (!response.body) {
     throw new Error('翻译连接中断，请重试。');
@@ -152,6 +162,10 @@ export async function translateStream(
     const { value, done } = await reader.read();
     if (done) break;
     consumeBuffer(decoder.decode(value, { stream: true }));
+    if (finalResult) {
+      await reader.cancel().catch(() => undefined);
+      return finalResult;
+    }
   }
   consumeBuffer(decoder.decode());
   // Flush a trailing event that lacks its final blank line.
@@ -162,11 +176,30 @@ export async function translateStream(
   // so re-type it explicitly before use.
   const streamError = lastError as { code?: string; message: string } | null;
   if (streamError) {
-    const error = new Error(streamError.message) as Error & { code?: string };
-    error.code = streamError.code;
-    throw error;
+    throw new TranslationServiceError(streamError.message, streamError.code);
   }
   // Stream ended without final or error event: the connection was cut.
+  throw new Error('翻译连接中断，请重试。');
+}
+
+export async function translateStream(
+  request: TranslationRequest,
+  handlers: TranslationStreamHandlers,
+  signal?: AbortSignal,
+): Promise<TranslationResponse> {
+  const maxAttempts = 2;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      return await translateStreamOnce(request, handlers, signal);
+    } catch (error) {
+      const canRetry = attempt < maxAttempts - 1
+        && !signal?.aborted
+        && !(error instanceof TranslationServiceError);
+      if (!canRetry) throw error;
+      handlers.onReset?.('transport_interrupted');
+    }
+  }
+
   throw new Error('翻译连接中断，请重试。');
 }
 
