@@ -82,6 +82,27 @@ export function Sidebar({ onNewChat }: SidebarProps) {
             {isServiceOnline ? '服务可用' : '服务不可用'}
           </span>
         </div>
+
+        {/* ICP & public security filing */}
+        <footer className="site-footer mt-1 pt-2 border-t border-[#e8e8e8] flex flex-col items-center gap-1 px-2">
+          <a
+            href="https://beian.mps.gov.cn/#/query/webSearch?code=21011302000542"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 text-[11px] leading-4 text-[#999999] hover:text-[#555555] transition-colors"
+          >
+            <img src="/beian.png" alt="公安备案图标" className="w-3.5 h-3.5" />
+            <span>辽公网安备21011302000542号</span>
+          </a>
+          <a
+            href="https://beian.miit.gov.cn/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[11px] leading-4 text-[#999999] hover:text-[#555555] transition-colors"
+          >
+            辽ICP备2026019919号-1
+          </a>
+        </footer>
       </div>
     </aside>
   );
