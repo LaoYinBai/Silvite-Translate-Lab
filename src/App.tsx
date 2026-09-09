@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { InputArea } from './components/InputArea/InputArea';
 import { ResultArea } from './components/ResultArea/ResultArea';
@@ -10,6 +10,8 @@ function App() {
     isLoading,
     checkService
   } = useTranslationStore();
+  
+  const [mobileSamplesOpen, setMobileSamplesOpen] = useState(false);
 
   useEffect(() => {
     checkService();
@@ -23,18 +25,50 @@ function App() {
 
   return (
     <div className="flex h-full bg-[#fafafa]">
-      {/* Sidebar - hidden on small screens for basic mobile usability */}
+      {/* Sidebar - hidden on small screens; samples open in a drawer */}
       <div className="hidden md:block h-full">
         <Sidebar onNewChat={handleNewChat} />
       </div>
       
+      {/* Mobile samples drawer */}
+      {mobileSamplesOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex">
+          <div
+            className="absolute inset-0 bg-black/30"
+            onClick={() => setMobileSamplesOpen(false)}
+            aria-hidden="true"
+          />
+          <div className="relative w-[280px] h-full bg-[#fafafa] border-r border-[#e8e8e8]">
+            <Sidebar
+              onNewChat={() => {
+                handleNewChat();
+                setMobileSamplesOpen(false);
+              }}
+              onSamplePicked={() => setMobileSamplesOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+      
       {/* Main content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top bar */}
-        <header className="h-[68px] flex items-center justify-between px-10 bg-white border-b border-[#e0e0e0] flex-shrink-0">
+        <header className="h-[68px] flex items-center justify-between px-5 sm:px-10 bg-white border-b border-[#e0e0e0] flex-shrink-0">
           <div className="flex items-center gap-3">
-            <h2 className="text-[19px] font-semibold text-[#1a1a1a]">翻译</h2>
-            <span className="text-[13px] text-[#888888] bg-[#f5f5f5] px-3 py-1 rounded-full">
+            {/* Mobile: samples drawer trigger */}
+            <button
+              type="button"
+              onClick={() => setMobileSamplesOpen(true)}
+              aria-label="打开演示样本"
+              className="md:hidden flex items-center gap-1.5 h-9 px-3 text-[13px] font-medium text-[#1a1a1a] border border-[#e0e0e0] rounded-lg hover:bg-[#f5f5f5] transition-colors"
+            >
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M2 3.5h12M2 8h12M2 12.5h8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+              </svg>
+              样本
+            </button>
+            <h2 className="text-[17px] sm:text-[19px] font-semibold text-[#1a1a1a]">翻译</h2>
+            <span className="text-[12px] sm:text-[13px] text-[#888888] bg-[#f5f5f5] px-3 py-1 rounded-full">
               实验版
             </span>
           </div>

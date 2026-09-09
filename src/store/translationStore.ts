@@ -12,8 +12,18 @@ export type TranslationMode =
 
 export type InputMode = 'text' | 'image';
 
+export type TranslationSegmentType =
+  | 'dialogue'
+  | 'narration'
+  | 'sound_effect'
+  | 'title'
+  | 'ui_text'
+  | 'sign'
+  | 'caption'
+  | 'text';
+
 export interface TranslationSegment {
-  type: 'dialogue' | 'narration' | 'sound_effect' | 'text';
+  type: TranslationSegmentType;
   source: string;
   translation: string;
 }
@@ -60,6 +70,8 @@ interface TranslationState {
   // Explicit demo state. Demo data may only be shown while this is true;
   // any real user action (editing, real image, translating) flips it off.
   isDemoMode: boolean;
+  // Guards against a slow image fetch overwriting a newer sample/action.
+  activeDemoId: string | null;
   
   // Service status
   isServiceOnline: boolean;
@@ -79,7 +91,7 @@ interface TranslationState {
   setError: (error: string | null) => void;
   setServiceOnline: (online: boolean) => void;
   checkService: () => Promise<void>;
-  loadDemoSample: (index: number) => void;
+  loadDemoSample: (index: number) => Promise<void>;
   translate: () => Promise<void>;
   reset: () => void;
 }
@@ -100,6 +112,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   isLoading: false,
   error: null,
   isDemoMode: false,
+  activeDemoId: null,
   isServiceOnline: true,
   
   // Any real user action immediately exits demo mode and drops demo data.
@@ -107,12 +120,12 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   // state replacement so no real data can leak into (or out of) the demo.
   setInputText: (text) => set((s) => (
     s.isDemoMode
-      ? { inputText: text, isDemoMode: false, result: null, error: null }
+      ? { inputText: text, isDemoMode: false, activeDemoId: null, result: null, error: null }
       : { inputText: text }
   )),
   setInputImage: (image) => set((s) => (
     image && s.isDemoMode
-      ? { inputImage: image, isDemoMode: false, result: null, error: null }
+      ? { inputImage: image, isDemoMode: false, activeDemoId: null, result: null, error: null }
       : { inputImage: image }
   )),
   setInputMode: (mode) => set({ inputMode: mode }),
@@ -135,20 +148,48 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
     }
   },
   
-  // Full demo-state replacement: clears ALL real data, loads the sample,
-  // and marks the state explicitly as demo.
-  loadDemoSample: (index) => {
+  // Full demo-state replacement: clears ALL real data, loads the sample
+  // (including mode/context/terminology), and marks the state explicitly
+  // as demo. Image samples fetch their file and attach the data URL, with
+  // a sample-id guard so a slow fetch cannot clobber a newer selection.
+  loadDemoSample: async (index) => {
     const demo = DEMO_SAMPLES[index];
     if (!demo) return;
+
     set({
-      inputText: demo.input,
+      inputText: demo.inputType === 'text' ? demo.source : '',
       inputImage: null,
-      inputMode: 'text',
+      inputMode: demo.inputType,
+      mode: demo.mode,
+      context: demo.context ?? '',
+      terminology: demo.terminology ?? '',
+      preserveNames: demo.preserveProperNames ?? true,
       result: { ...demo.result, source: 'demo' },
       isLoading: false,
       error: null,
       isDemoMode: true,
+      activeDemoId: demo.id,
     });
+
+    if (demo.inputType === 'image' && demo.demoImage) {
+      try {
+        const response = await fetch(demo.demoImage);
+        const blob = await response.blob();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        });
+        // Apply only if the same sample is still active and still demo.
+        const current = get();
+        if (current.isDemoMode && current.activeDemoId === demo.id) {
+          set({ inputImage: dataUrl });
+        }
+      } catch {
+        // Demo image is optional decoration; real flow is unaffected.
+      }
+    }
   },
   
   translate: async () => {
@@ -156,7 +197,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
     if (!state.inputText.trim() && !state.inputImage) return;
     
     // Translating is a real action: exit demo and drop any demo result.
-    set({ isLoading: true, error: null, isDemoMode: false, result: null });
+    set({ isLoading: true, error: null, isDemoMode: false, activeDemoId: null, result: null });
     
     try {
       const response = await apiTranslate({
@@ -178,7 +219,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
           detectedText: response.detected_text || undefined,
           segments: (response.segments || []).map(s => ({
             ...s,
-            type: s.type as 'dialogue' | 'narration' | 'sound_effect' | 'text'
+            type: s.type as TranslationSegmentType
           })),
           notes: response.notes || []
         },
@@ -197,6 +238,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
     inputImage: null,
     result: null,
     error: null,
-    isDemoMode: false
+    isDemoMode: false,
+    activeDemoId: null
   })
 }));

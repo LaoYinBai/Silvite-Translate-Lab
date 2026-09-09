@@ -1,11 +1,13 @@
 import { useTranslationStore } from '../../store/translationStore';
 import { DEMO_SAMPLES } from '../../demo/samples';
+import { DemoSampleList } from './DemoSampleList';
 
 interface SidebarProps {
   onNewChat: () => void;
+  onSamplePicked?: () => void;
 }
 
-export function Sidebar({ onNewChat }: SidebarProps) {
+export function Sidebar({ onNewChat, onSamplePicked }: SidebarProps) {
   const { isServiceOnline } = useTranslationStore();
 
   return (
@@ -45,24 +47,8 @@ export function Sidebar({ onNewChat }: SidebarProps) {
             演示样本
           </span>
         </div>
-        
-        <div className="space-y-1">
-          {DEMO_SAMPLES.map((demo, index) => (
-            <button
-              key={demo.title}
-              onClick={() => useTranslationStore.getState().loadDemoSample(index)}
-              className="w-full flex items-start gap-3 px-3 py-2.5 rounded-lg text-left text-[#1a1a1a] hover:bg-[#f0f0f0] transition-colors"
-            >
-              <svg width="18" height="18" viewBox="0 0 16 16" fill="none" className="mt-0.5 flex-shrink-0 opacity-60" aria-hidden="true">
-                <path d="M2 3h12M2 6.5h12M2 10h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              </svg>
-              <div className="flex-1 min-w-0">
-                <p className="text-[14px] font-medium truncate">{demo.title}</p>
-                <p className="text-[12px] text-[#888888] mt-0.5">{demo.subtitle}</p>
-              </div>
-            </button>
-          ))}
-        </div>
+
+        <DemoSampleList samples={DEMO_SAMPLES} onPicked={onSamplePicked} />
       </div>
       
       {/* Bottom: real service status (from OPTIONS health check) */}

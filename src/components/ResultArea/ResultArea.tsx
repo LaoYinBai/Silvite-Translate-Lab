@@ -197,7 +197,7 @@ function ResultCard({ result }: { result: any }) {
               <div key={index} className="p-5 bg-[#f7f8fa] rounded-xl">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="px-2.5 py-1 text-[12px] font-medium bg-[#e6f4ff] text-[#1677ff] rounded-md">
-                    {{ dialogue: '对白', narration: '旁白', sound_effect: '拟声词', text: '文本' }[segment.type as string] || segment.type}
+                    {{ dialogue: '对白', narration: '旁白', sound_effect: '拟声词', title: '标题', ui_text: '界面文字', sign: '标牌', caption: '图注', text: '文本' }[segment.type as string] || segment.type}
                   </span>
                 </div>
                 <p className="text-[14px] text-[#888888] mb-2">{segment.source}</p>
