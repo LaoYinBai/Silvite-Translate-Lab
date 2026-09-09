@@ -1,4 +1,4 @@
-import { test, beforeEach } from 'node:test';
+﻿import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { onRequest, buildComicTranslation, enforceReplyOrders } from '../functions/api/translate.js';
 
@@ -14,12 +14,25 @@ function makeRequest(body) {
 }
 
 function fakeMimoResponse(content) {
-  return {
-    ok: true,
+  const parts = [];
+  if (content) {
+    parts.push(JSON.stringify({ choices: [{ delta: { content }, finish_reason: null }] }));
+  }
+  parts.push(JSON.stringify({ choices: [{ delta: {}, finish_reason: 'stop' }] }));
+  parts.push('[DONE]');
+  return new Response(parts.map((p) => `data: ${p}\n\n`).join(''), {
     status: 200,
-    json: async () => ({ choices: [{ message: { content } }] }),
-    text: async () => content,
-  };
+    headers: { 'Content-Type': 'text/event-stream' },
+  });
+}
+
+async function readNdjson(response) {
+  const text = await response.text();
+  return text.split('\n').filter(Boolean).map((line) => JSON.parse(line));
+}
+
+function finalEventOf(events) {
+  return events.find((e) => e.type === 'final')?.result;
 }
 
 const originalFetch = globalThis.fetch;
@@ -115,7 +128,7 @@ test('T6: comic without segments falls back to parsed translation', async () => 
     request: makeRequest({ imageDataUrl: 'data:image/png;base64,AAAA', mode: 'comic' }),
     env: ENV,
   });
-  const payload = await response.json();
+  const payload = finalEventOf(await readNdjson(response));
 
   assert.equal(response.status, 200);
   assert.equal(payload.translation, '模型自由排版的译文');
@@ -142,7 +155,7 @@ test('comic + image + valid segments: translation is rebuilt deterministically',
     request: makeRequest({ imageDataUrl: 'data:image/png;base64,AAAA', mode: 'comic' }),
     env: ENV,
   });
-  const payload = await response.json();
+  const payload = finalEventOf(await readNdjson(response));
 
   assert.equal(payload.translation, '【女生】\n你太慢了\n\n【男生】\n抱歉');
   // Segments pass through with panel/order/speaker intact.
@@ -169,7 +182,7 @@ test('non-comic image mode keeps model free translation untouched', async () => 
     request: makeRequest({ imageDataUrl: 'data:image/png;base64,AAAA', mode: 'natural' }),
     env: ENV,
   });
-  const payload = await response.json();
+  const payload = finalEventOf(await readNdjson(response));
 
   assert.equal(payload.translation, '自然模式自由译文');
 });
