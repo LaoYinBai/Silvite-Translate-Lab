@@ -232,7 +232,9 @@ export async function onRequest(context) {
       JSON.stringify({
         source_language: sourceLanguage,
         target_language: normalizeLang(parsed.target_language, sourceLanguage === 'zh' ? 'en' : 'zh'),
-        detected_style: parsed.detected_style || fallback.detectedStyle,
+        // For explicit modes the requested style IS the style; the model's own
+        // classification is only meaningful for auto mode.
+        detected_style: composition.mode !== 'auto' ? composition.mode : (parsed.detected_style || fallback.detectedStyle),
         translation: parsed.translation || '',
         // detected_text is only meaningful for image mode; in text mode the
         // user's input IS the source, so any model-invented "source" is dropped.
