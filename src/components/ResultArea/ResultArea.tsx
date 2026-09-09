@@ -11,7 +11,7 @@ export function ResultArea() {
   }
   
   return (
-    <div className="w-full mt-10">
+    <div className="w-full mt-6 md:mt-10">
       {isLoading && <LoadingState />}
       {error && <ErrorState message={error} />}
       {result && !isLoading && <ResultCard result={result} />}
@@ -21,7 +21,7 @@ export function ResultArea() {
 
 function LoadingState() {
   return (
-    <div className="bg-white rounded-xl border border-[#e0e0e0] p-12">
+    <div className="bg-white rounded-xl border border-[#e0e0e0] p-8 md:p-12">
       <div className="flex flex-col items-center gap-4">
         <div className="flex items-center gap-3">
           <svg className="animate-spin h-7 w-7 text-[#1677ff]" viewBox="0 0 24 24" fill="none">
@@ -42,7 +42,7 @@ function ErrorState({ message }: { message: string }) {
   };
 
   return (
-    <div className="bg-white rounded-xl border border-[#ff4d4f] p-10">
+    <div className="bg-white rounded-xl border border-[#ff4d4f] p-6 md:p-10">
       <div className="flex items-start gap-4">
         <div className="w-12 h-12 rounded-full bg-[#fff2f0] flex items-center justify-center flex-shrink-0">
           <svg width="24" height="24" viewBox="0 0 16 16" fill="none" className="text-[#ff4d4f]" aria-hidden="true">
@@ -92,8 +92,8 @@ function ResultCard({ result }: { result: any }) {
   return (
     <div className="bg-white rounded-xl border border-[#e0e0e0]">
       {/* Header */}
-      <div className="flex items-center justify-between px-7 py-5 bg-[#fafafa] border-b border-[#f0f0f0] rounded-t-xl">
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between gap-2 px-4 py-4 md:px-7 md:py-5 bg-[#fafafa] border-b border-[#f0f0f0] rounded-t-xl min-w-0">
+        <div className="flex items-center gap-2.5 md:gap-3 flex-shrink-0">
           <span className="text-[15px] font-medium text-[#1a1a1a]">
             {languageLabel(result.sourceLanguage)}
           </span>
@@ -105,7 +105,7 @@ function ResultCard({ result }: { result: any }) {
           </span>
         </div>
         
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 justify-end">
           <button
             onClick={handleCopy}
             className={`btn ${copySuccess ? 'btn-success' : 'btn-secondary'} h-[38px]`}
@@ -176,7 +176,7 @@ function ResultCard({ result }: { result: any }) {
       
       {/* Detected text (for image mode) */}
       {result.detectedText && (
-        <div className="mx-7 mb-7 p-6 bg-[#f7f8fa] rounded-xl">
+        <div className="mx-4 mb-6 md:mx-7 md:mb-7 p-4 md:p-6 bg-[#f7f8fa] rounded-xl">
           <h4 className="text-[13px] font-semibold text-[#888888] uppercase tracking-wider mb-3">
             识别文本
           </h4>
@@ -188,13 +188,13 @@ function ResultCard({ result }: { result: any }) {
       
       {/* Segments */}
       {result.segments && result.segments.length > 0 && (
-        <div className="mx-7 mb-7">
+        <div className="mx-4 mb-6 md:mx-7 md:mb-7">
           <h4 className="text-[13px] font-semibold text-[#888888] uppercase tracking-wider mb-4">
             分段结果
           </h4>
           <div className="space-y-3">
             {result.segments.map((segment: any, index: number) => (
-              <div key={index} className="p-5 bg-[#f7f8fa] rounded-xl">
+              <div key={index} className="p-4 md:p-5 bg-[#f7f8fa] rounded-xl">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="px-2.5 py-1 text-[12px] font-medium bg-[#e6f4ff] text-[#1677ff] rounded-md">
                     {{ dialogue: '对白', narration: '旁白', sound_effect: '拟声词', title: '标题', ui_text: '界面文字', sign: '标牌', caption: '图注', background_text: '背景文字', text: '文本' }[segment.type as string] || segment.type}
@@ -215,7 +215,7 @@ function ResultCard({ result }: { result: any }) {
       
       {/* Notes - display controlled by the toggle; data always kept in state */}
       {showTranslationNotes && (
-        <div className="mx-7 mb-7">
+        <div className="mx-4 mb-6 md:mx-7 md:mb-7">
           <h4 className="text-[13px] font-semibold text-[#888888] uppercase tracking-wider mb-4">
             翻译说明
           </h4>

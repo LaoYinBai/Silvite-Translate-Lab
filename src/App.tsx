@@ -33,9 +33,9 @@ function App() {
   const hasResult = result || isLoading;
 
   return (
-    // App shell: 10px breathing space (left/top/bottom) + 10px gap to main.
-    // Sidebar is a flex item, so the shell padding owns the offset.
-    <div className="flex h-full bg-white pt-[10px] pb-[10px] pl-[10px] pr-0 gap-[10px]">
+    // App shell: desktop gets the 10px panel spacing (left/top/bottom + gap
+    // to main); mobile keeps zero chrome so the full width belongs to content.
+    <div className="flex h-full bg-white p-0 md:pt-[10px] md:pb-[10px] md:pl-[10px] md:pr-0 md:gap-[10px]">
       {/* Sidebar - hidden on small screens; samples open in a drawer.
           Desktop: fixed-width floating panel, rounded, clipped by itself. */}
       <div className="hidden md:block w-[280px] flex-shrink-0 rounded-[10px] overflow-hidden">
@@ -65,48 +65,48 @@ function App() {
       {/* Main content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top bar */}
-        <header className="h-[68px] flex items-center justify-between px-5 sm:px-10 bg-white border-b border-[#e0e0e0] flex-shrink-0">
-          <div className="flex items-center gap-3">
+        <header className="h-14 md:h-[68px] flex items-center justify-between px-4 sm:px-10 bg-white border-b border-[#e0e0e0] flex-shrink-0 min-w-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
             {/* Mobile: samples drawer trigger */}
             <button
               type="button"
               onClick={() => setMobileSamplesOpen(true)}
               aria-label="打开演示样本"
-              className="md:hidden flex items-center gap-1.5 h-9 px-3 text-[13px] font-medium text-[#1a1a1a] border border-[#e0e0e0] rounded-lg hover:bg-[#f5f5f5] transition-colors"
+              className="md:hidden flex items-center gap-1.5 h-9 px-3 text-[13px] font-medium text-[#1a1a1a] border border-[#e0e0e0] rounded-lg hover:bg-[#f5f5f5] transition-colors flex-shrink-0"
             >
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                 <path d="M2 3.5h12M2 8h12M2 12.5h8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
               </svg>
               样本
             </button>
-            <h2 className="text-[17px] sm:text-[19px] font-semibold text-[#1a1a1a]">Translate Lab</h2>
-            <span className="text-[12px] sm:text-[13px] text-[#888888] bg-[#f5f5f5] px-3 py-1 rounded-full">
+            <h2 className="text-[16px] sm:text-[19px] font-semibold text-[#1a1a1a] truncate">Translate Lab</h2>
+            <span className="text-[11px] sm:text-[13px] text-[#888888] bg-[#f5f5f5] px-2 py-0.5 sm:px-3 sm:py-1 rounded-full flex-shrink-0">
               实验版
             </span>
           </div>
         </header>
         
         {/* Content area - scrollable */}
-        <div className="flex-1 overflow-y-auto">
-          {/* Workspace - true center (vertical + horizontal) */}
-          <div className="min-h-full flex items-center justify-center px-6 md:px-10 py-10">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
+          {/* Workspace: mobile starts near the top; desktop stays centered */}
+          <div className="min-h-full flex justify-start md:items-center md:justify-center px-4 py-6 md:px-10 md:py-10">
             {/* Workspace container */}
-            <div className="w-full max-w-[900px]">
+            <div className="w-full max-w-[900px] min-w-0">
               {!hasResult ? (
-                /* Welcome state - centered */
+                /* Welcome state - centered (desktop) / top-aligned (mobile) */
                 <div className="flex flex-col items-center">
-                  <div className="text-center mb-10 sm:mb-12">
-                    <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mb-5">
+                  <div className="text-center mb-8 md:mb-12">
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 mb-4 md:mb-5">
                       <img
                         src="/icons/app-icon.svg"
                         alt="Silvite 图标"
-                        className="w-12 h-12 sm:w-16 sm:h-16 flex-shrink-0"
+                        className="w-11 h-11 sm:w-16 sm:h-16 flex-shrink-0"
                       />
-                      <h1 className="text-[24px] sm:text-[32px] md:text-[36px] font-semibold text-[#1a1a1a] leading-tight">
+                      <h1 className="text-[22px] sm:text-[32px] md:text-[36px] font-semibold text-[#1a1a1a] leading-tight">
                         Silvite Translate Lab
                       </h1>
                     </div>
-                    <p className="text-[15px] sm:text-[17px] text-[#555555] max-w-[540px] leading-relaxed">
+                    <p className="text-[14px] sm:text-[17px] text-[#555555] max-w-[540px] leading-relaxed">
                       面向译者的 AI 翻译工作台。自动识别语言：中文译入英文，其他语言一律译入中文；支持上下文消歧、术语硬约束与图片理解。
                     </p>
                   </div>
@@ -115,8 +115,8 @@ function App() {
                     <InputArea />
                   </div>
                   
-                  {/* Feature hints */}
-                  <div className="flex flex-wrap items-center justify-center gap-5 sm:gap-8 lg:gap-10 mt-10 sm:mt-14">
+                  {/* Feature hints: single column on mobile, row on desktop */}
+                  <div className="flex flex-col md:flex-row items-start md:items-center justify-start md:justify-center gap-4 md:gap-8 lg:gap-10 mt-8 md:mt-14 w-full">
                     <FeatureHint 
                       icon={
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
