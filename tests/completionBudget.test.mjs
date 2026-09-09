@@ -26,7 +26,7 @@ test('env override is respected', () => {
 });
 
 test('unreasonable env values are clamped', () => {
-  assert.equal(getCompletionBudget({ textLength: 10, env: { MAX_COMPLETION_TOKENS: '999999' } }), 32768);
+  assert.equal(getCompletionBudget({ textLength: 10, env: { MAX_COMPLETION_TOKENS: '999999' } }), 65536);
   assert.equal(getCompletionBudget({ textLength: 10, env: { MAX_COMPLETION_TOKENS: '1' } }), 1024);
   assert.equal(getCompletionBudget({ textLength: 10, env: { MAX_COMPLETION_TOKENS: 'abc' } }), 4096);
 });
@@ -34,5 +34,5 @@ test('unreasonable env values are clamped', () => {
 test('retry budget doubles but stays clamped', () => {
   assert.equal(getRetryCompletionBudget(4096), 8192);
   assert.equal(getRetryCompletionBudget(16384), 32768);
-  assert.equal(getRetryCompletionBudget(32768), 32768);
+  assert.equal(getRetryCompletionBudget(32768), 65536);
 });
