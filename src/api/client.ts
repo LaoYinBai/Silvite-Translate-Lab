@@ -145,14 +145,6 @@ export async function translateStream(
   throw new Error('翻译连接中断，请重试。');
 }
 
-/**
- * Compatibility helper: full result via the streaming transport, without
- * incremental handlers.
- */
-export async function translate(request: TranslationRequest): Promise<TranslationResponse> {
-  return translateStream(request, {});
-}
-
 export async function checkHealth(): Promise<boolean> {
   try {
     const response = await fetch(`${API_BASE_URL}/translate`, { method: 'OPTIONS' });
