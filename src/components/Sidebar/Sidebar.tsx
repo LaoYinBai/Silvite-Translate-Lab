@@ -11,9 +11,9 @@ export function Sidebar({ onNewChat, onSamplePicked }: SidebarProps) {
   const { isServiceOnline } = useTranslationStore();
 
   return (
-    <aside className="w-[280px] h-full flex flex-col bg-white border-r border-[#e8e8e8] select-none flex-shrink-0 py-[10px] px-[10px]">
+    <aside className="w-[280px] h-full flex flex-col bg-[#f6f7f9] select-none flex-shrink-0 py-[10px] px-[10px]">
       {/* Logo & Brand */}
-      <div className="h-[68px] flex items-center px-2.5 border-b border-[#e8e8e8]">
+      <div className="h-[68px] flex items-center px-2.5 border-b border-[#e4e6ea]">
         <div className="flex items-center gap-3">
           <img
             src="/icons/app-icon.svg"
@@ -52,7 +52,7 @@ export function Sidebar({ onNewChat, onSamplePicked }: SidebarProps) {
       </div>
       
       {/* Bottom: real service status (from OPTIONS health check) */}
-      <div className="px-2.5 py-2.5 border-t border-[#e8e8e8]">
+      <div className="px-2.5 py-2.5 border-t border-[#e4e6ea]">
         <div className="flex items-center gap-2.5 px-2.5 py-2">
           <div className={`w-2.5 h-2.5 rounded-full ${isServiceOnline ? 'bg-[#52c41a]' : 'bg-[#ff4d4f]'}`} />
           <span className="text-[13px] text-[#555555]">
@@ -61,7 +61,7 @@ export function Sidebar({ onNewChat, onSamplePicked }: SidebarProps) {
         </div>
 
         {/* ICP & public security filing */}
-        <footer className="site-footer mt-1 pt-2 border-t border-[#e8e8e8] flex flex-col items-center gap-1 px-2">
+        <footer className="site-footer mt-1 pt-2 border-t border-[#e4e6ea] flex flex-col items-center gap-1 px-2">
           <a
             href="https://beian.mps.gov.cn/#/query/webSearch?code=21011302000542"
             target="_blank"
