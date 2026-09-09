@@ -91,9 +91,91 @@ function ResultCard({ result }: { result: any }) {
   
   return (
     <div className="bg-white rounded-xl border border-[#e0e0e0]">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2 px-4 py-4 md:px-7 md:py-5 bg-[#fafafa] border-b border-[#f0f0f0] rounded-t-xl min-w-0">
-        <div className="flex items-center gap-2.5 md:gap-3 flex-shrink-0">
+      {/* Header - mobile: two deterministic rows (info / actions); desktop:
+          original single row. Handlers and state are shared. */}
+      {/* Mobile header */}
+      <div className="md:hidden flex flex-col gap-3 px-4 py-4 bg-[#fafafa] border-b border-[#f0f0f0] rounded-t-xl min-w-0">
+        {/* Row 1: language direction + translation-notes display toggle */}
+        <div className="flex items-center justify-between w-full min-w-0">
+          <div className="flex items-center gap-2 flex-shrink-0 whitespace-nowrap min-w-0">
+            <span className="text-[15px] font-medium text-[#1a1a1a]">
+              {languageLabel(result.sourceLanguage)}
+            </span>
+            <svg width="18" height="18" viewBox="0 0 12 12" fill="none" className="text-[#888888]" aria-hidden="true">
+              <path d="M2.5 6h7m0 0L6 3m3.5 3L6 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            <span className="text-[15px] font-medium text-[#1a1a1a]">
+              {languageLabel(result.targetLanguage)}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={toggleShowTranslationNotes}
+            aria-pressed={showTranslationNotes}
+            className={`btn btn-secondary h-9 flex-shrink-0 whitespace-nowrap ${showTranslationNotes ? 'bg-[#e6f4ff] border-[#1677ff] text-[#1677ff]' : ''}`}
+            title="显示或隐藏翻译说明（不触发重新翻译）"
+          >
+            翻译说明
+            <span
+              className={`px-1.5 py-0.5 text-[10px] font-semibold rounded ${
+                showTranslationNotes
+                  ? 'bg-[#1677ff] text-white'
+                  : 'bg-[#f0f0f0] text-[#888888]'
+              }`}
+            >
+              {showTranslationNotes ? 'ON' : 'OFF'}
+            </span>
+          </button>
+        </div>
+
+        {/* Row 2: result actions - three equal cells */}
+        <div className="grid grid-cols-3 gap-2 w-full min-w-0">
+          <button
+            onClick={handleCopy}
+            className={`btn ${copySuccess ? 'btn-success' : 'btn-secondary'} h-9 w-full whitespace-nowrap min-w-0`}
+          >
+            {copySuccess ? (
+              <>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="flex-shrink-0">
+                  <path d="M4 8l3 3 5-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                已复制
+              </>
+            ) : (
+              <>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="flex-shrink-0">
+                  <path d="M5.75 4.75h-2a1 1 0 00-1 1v6.5a1 1 0 001 1h6.5a1 1 0 001-1v-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M8.75 2.75h3.5v3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M6.5 9.5l6.5-6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+                复制
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleRegenerate}
+            disabled={isDemo}
+            aria-label="使用当前设置重新翻译"
+            title={isDemo ? '演示数据不支持重新翻译，请输入内容后翻译' : '使用当前设置重新翻译'}
+            className="btn btn-secondary h-9 w-full whitespace-nowrap min-w-0"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="flex-shrink-0">
+              <path d="M2.5 2.5v4h4M13.5 13.5v-4h-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M13.25 6.25A5.5 5.5 0 003 3.5L2.5 4m11 8l.5.5a5.5 5.5 0 01-10-2.75" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            重新翻译
+          </button>
+
+          <ExportMenu />
+        </div>
+      </div>
+
+      {/* Desktop header - unchanged */}
+      <div className="hidden md:flex items-center justify-between gap-2 px-7 py-5 bg-[#fafafa] border-b border-[#f0f0f0] rounded-t-xl min-w-0">
+        <div className="flex items-center gap-3 flex-shrink-0">
           <span className="text-[15px] font-medium text-[#1a1a1a]">
             {languageLabel(result.sourceLanguage)}
           </span>
@@ -104,8 +186,8 @@ function ResultCard({ result }: { result: any }) {
             {languageLabel(result.targetLanguage)}
           </span>
         </div>
-        
-        <div className="flex flex-wrap items-center gap-2 justify-end">
+
+        <div className="flex items-center gap-2 justify-end">
           <button
             onClick={handleCopy}
             className={`btn ${copySuccess ? 'btn-success' : 'btn-secondary'} h-[38px]`}
@@ -128,7 +210,7 @@ function ResultCard({ result }: { result: any }) {
               </>
             )}
           </button>
-          
+
           <button
             type="button"
             onClick={handleRegenerate}
@@ -143,7 +225,7 @@ function ResultCard({ result }: { result: any }) {
             </svg>
             重新翻译
           </button>
-          
+
           <button
             type="button"
             onClick={toggleShowTranslationNotes}
@@ -162,7 +244,7 @@ function ResultCard({ result }: { result: any }) {
               {showTranslationNotes ? 'ON' : 'OFF'}
             </span>
           </button>
-          
+
           <ExportMenu />
         </div>
       </div>
