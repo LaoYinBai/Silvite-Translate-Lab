@@ -25,9 +25,8 @@ function App() {
 
   return (
     <div className="flex h-full bg-[#fafafa]">
-      {/* Sidebar - hidden on small screens; samples open in a drawer.
-          Desktop: floating rounded panel with breathing margin (Qwen-style). */}
-      <div className="hidden md:block ml-[10px] my-[10px] h-[calc(100%-20px)] rounded-2xl border border-[#e8e8e8] bg-white overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
+      {/* Sidebar - hidden on small screens; samples open in a drawer */}
+      <div className="hidden md:block h-full">
         <Sidebar onNewChat={handleNewChat} />
       </div>
       

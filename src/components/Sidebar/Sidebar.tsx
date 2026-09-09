@@ -11,9 +11,9 @@ export function Sidebar({ onNewChat, onSamplePicked }: SidebarProps) {
   const { isServiceOnline } = useTranslationStore();
 
   return (
-    <aside className="w-[280px] h-full flex flex-col bg-white select-none flex-shrink-0">
+    <aside className="w-[280px] h-full flex flex-col bg-white border-r border-[#e8e8e8] select-none flex-shrink-0 py-[10px] px-[10px]">
       {/* Logo & Brand */}
-      <div className="h-[68px] flex items-center px-5 border-b border-[#e8e8e8]">
+      <div className="h-[68px] flex items-center px-2.5 border-b border-[#e8e8e8]">
         <div className="flex items-center gap-3">
           <img
             src="/icons/app-icon.svg"
@@ -28,7 +28,7 @@ export function Sidebar({ onNewChat, onSamplePicked }: SidebarProps) {
       </div>
       
       {/* New Translation Button */}
-      <div className="p-4">
+      <div className="px-2.5 py-2.5">
         <button
           onClick={onNewChat}
           className="btn btn-primary w-full"
@@ -41,8 +41,8 @@ export function Sidebar({ onNewChat, onSamplePicked }: SidebarProps) {
       </div>
       
       {/* Demo samples - explicitly labeled, not fake history */}
-      <div className="flex-1 overflow-y-auto px-3">
-        <div className="mb-2 px-2">
+      <div className="flex-1 overflow-y-auto">
+        <div className="mb-2 px-2.5">
           <span className="text-[12px] font-medium text-[#888888] uppercase tracking-wider">
             演示样本
           </span>
@@ -52,8 +52,8 @@ export function Sidebar({ onNewChat, onSamplePicked }: SidebarProps) {
       </div>
       
       {/* Bottom: real service status (from OPTIONS health check) */}
-      <div className="p-4 border-t border-[#e8e8e8]">
-        <div className="flex items-center gap-2.5 px-3 py-2.5">
+      <div className="px-2.5 py-2.5 border-t border-[#e8e8e8]">
+        <div className="flex items-center gap-2.5 px-2.5 py-2">
           <div className={`w-2.5 h-2.5 rounded-full ${isServiceOnline ? 'bg-[#52c41a]' : 'bg-[#ff4d4f]'}`} />
           <span className="text-[13px] text-[#555555]">
             {isServiceOnline ? '服务可用' : '服务不可用'}
