@@ -100,7 +100,7 @@ export function ExportMenu() {
       {isOpen && (
         <div
           role="menu"
-          className="absolute right-0 top-full mt-1 w-44 bg-white border border-[#e0e0e0] rounded-lg shadow-md py-1 z-20"
+          className="absolute right-0 top-full mt-1 w-44 bg-white border border-[#e0e0e0] rounded-lg shadow-md py-1 z-50"
         >
           <button
             type="button"
@@ -130,7 +130,7 @@ export function ExportMenu() {
       )}
 
       {error && (
-        <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-[#ff4d4f] rounded-lg shadow-md p-3 z-20">
+        <div className="absolute right-0 top-full mt-1 w-56 bg-white border border-[#ff4d4f] rounded-lg shadow-md p-3 z-50">
           <p className="text-[12px] text-[#ff4d4f]">{error}</p>
         </div>
       )}
