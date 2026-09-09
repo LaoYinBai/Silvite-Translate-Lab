@@ -11,7 +11,7 @@ export function Sidebar({ onNewChat, onSamplePicked }: SidebarProps) {
   const { isServiceOnline } = useTranslationStore();
 
   return (
-    <aside className="w-[280px] h-full flex flex-col bg-[#fafafa] border-r border-[#e8e8e8] select-none flex-shrink-0">
+    <aside className="w-[280px] h-full flex flex-col bg-white select-none flex-shrink-0">
       {/* Logo & Brand */}
       <div className="h-[68px] flex items-center px-5 border-b border-[#e8e8e8]">
         <div className="flex items-center gap-3">

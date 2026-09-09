@@ -26,8 +26,8 @@ function App() {
   return (
     <div className="flex h-full bg-[#fafafa]">
       {/* Sidebar - hidden on small screens; samples open in a drawer.
-          Desktop: 10px breathing margin so the panel floats off the edge. */}
-      <div className="hidden md:block ml-[10px] my-[10px] h-[calc(100%-20px)]">
+          Desktop: floating rounded panel with breathing margin (Qwen-style). */}
+      <div className="hidden md:block ml-[10px] my-[10px] h-[calc(100%-20px)] rounded-2xl border border-[#e8e8e8] bg-white overflow-hidden shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
         <Sidebar onNewChat={handleNewChat} />
       </div>
       
@@ -39,7 +39,7 @@ function App() {
             onClick={() => setMobileSamplesOpen(false)}
             aria-hidden="true"
           />
-          <div className="relative w-[280px] h-full bg-[#fafafa] border-r border-[#e8e8e8]">
+          <div className="relative w-[280px] h-full bg-white border-r border-[#e8e8e8]">
             <Sidebar
               onNewChat={() => {
                 handleNewChat();
