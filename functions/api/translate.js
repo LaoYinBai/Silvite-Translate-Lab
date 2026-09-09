@@ -304,6 +304,34 @@ export function composeTranslationPrompt(options = {}) {
   return { prompt: sections.join('\n\n---\n\n'), mode: effectiveMode };
 }
 
+// Completion budget policy. Thinking is disabled for translation requests, so
+// these are pure output budgets. MiMo mimo-v2.5 accepts [1, 131072] and
+// defaults to 32768; we keep well below that unless env explicitly allows.
+const MAX_COMPLETION_TOKENS_CEILING = 32768;
+
+// Deterministic output budget from input shape. Not user-controllable; env
+// override (MAX_COMPLETION_TOKENS) is clamped.
+export function getCompletionBudget({ textLength = 0, hasImage = false, mode = 'auto', env = {} } = {}) {
+  let budget;
+  if (textLength <= 800) budget = 4096;
+  else if (textLength <= 2500) budget = 8192;
+  else budget = 16384;
+
+  if (hasImage) budget = Math.max(budget, 8192);
+  if (hasImage && mode === 'comic') budget = Math.max(budget, 16384);
+
+  const raw = Number.parseInt(env.MAX_COMPLETION_TOKENS || '', 10);
+  if (Number.isFinite(raw) && raw > 0) {
+    return Math.min(Math.max(raw, 1024), MAX_COMPLETION_TOKENS_CEILING);
+  }
+  return Math.min(budget, MAX_COMPLETION_TOKENS_CEILING);
+}
+
+// Retry uses a doubled budget, still clamped.
+export function getRetryCompletionBudget(firstBudget) {
+  return Math.min(firstBudget * 2, MAX_COMPLETION_TOKENS_CEILING);
+}
+
 function checkRateLimit(ip, limit, windowMs) {
   const now = Date.now();
   const record = rateLimitMap.get(ip);
@@ -328,7 +356,13 @@ function corsHeaders(origin) {
   };
 }
 
-function parseModelContent(content, fallback) {
+// Structured parser for model output. Never returns raw protocol data as a
+// user-facing translation when the payload looks like structured JSON:
+// - { ok: true,  value, recovery? } - parsed result (recovery notes the repair)
+// - { ok: false, reason }           - reason: 'empty' | 'truncated_json' | 'malformed_json'
+// Plain-text model responses (not structured JSON) keep the legacy raw-text
+// fallback: that text IS the translation.
+export function parseModelContent(content, fallback, finishReason) {
   const tryParse = (raw) => {
     try {
       return JSON.parse(raw);
@@ -372,8 +406,6 @@ function parseModelContent(content, fallback) {
     return out;
   };
 
-  const candidates = [content];
-
   // Models occasionally double-encode the whole payload as a string inside
   // the "translation" field. Unwrap it so structure survives.
   const unwrapDoubleEncoded = (obj) => {
@@ -382,40 +414,76 @@ function parseModelContent(content, fallback) {
       if (t.startsWith('{') && t.includes('"segments"')) {
         try {
           const inner = JSON.parse(t);
-          if (inner && typeof inner.translation === 'string') return inner;
+          if (inner && typeof inner.translation === 'string') return { value: inner, recovery: 'double_encoded' };
         } catch {
           // keep outer object
         }
       }
     }
-    return obj;
+    return null;
   };
 
-  const fenceStart = content.indexOf('```');
+  const trimmed = typeof content === 'string' ? content.trim() : '';
+  if (!trimmed) {
+    return { ok: false, reason: 'empty' };
+  }
+
+  const candidates = [trimmed];
+
+  const fenceStart = trimmed.indexOf('```');
   if (fenceStart !== -1) {
-    const fenceEnd = content.lastIndexOf('```');
+    const fenceEnd = trimmed.lastIndexOf('```');
     if (fenceEnd > fenceStart) {
-      candidates.push(content.slice(fenceStart + 3, fenceEnd).replace(/^json\s*/, '').trim());
+      candidates.push(trimmed.slice(fenceStart + 3, fenceEnd).replace(/^json\s*/, '').trim());
     }
   }
 
-  const objectMatch = content.match(/\{[\s\S]*\}/);
+  const objectMatch = trimmed.match(/\{[\s\S]*\}/);
   if (objectMatch) candidates.push(objectMatch[0]);
 
   for (const candidate of candidates) {
     let parsed = tryParse(candidate);
-    if (parsed) return unwrapDoubleEncoded(parsed);
+    if (parsed) {
+      const unwrapped = unwrapDoubleEncoded(parsed);
+      if (unwrapped) return { ok: true, value: unwrapped.value, recovery: 'double_encoded' };
+      return { ok: true, value: parsed };
+    }
     parsed = tryParse(repairQuotes(candidate));
-    if (parsed) return unwrapDoubleEncoded(parsed);
+    if (parsed) {
+      const unwrapped = unwrapDoubleEncoded(parsed);
+      if (unwrapped) return { ok: true, value: unwrapped.value, recovery: 'quote_repair+double_encoded' };
+      return { ok: true, value: parsed, recovery: 'quote_repair' };
+    }
   }
 
+  // All parse attempts failed. If the output looks like structured JSON (as
+  // the prompt requires), it must NEVER fall back to raw text - the user
+  // would see half a protocol payload as their "translation".
+  const looksStructured =
+    trimmed.startsWith('{') ||
+    (trimmed.startsWith('```') && trimmed.slice(3).trimStart().startsWith('{'));
+
+  if (looksStructured) {
+    const truncated =
+      finishReason === 'length' ||
+      // Conservative extra evidence: known top-level fields present but the
+      // object never closed before the output ended.
+      !trimmed.endsWith('}');
+    return { ok: false, reason: truncated ? 'truncated_json' : 'malformed_json' };
+  }
+
+  // Plain-text model response: the text itself is the translation.
   return {
-    source_language: fallback.sourceLanguage,
-    target_language: fallback.targetLanguage,
-    detected_style: fallback.detectedStyle,
-    translation: content.trim(),
-    segments: [],
-    notes: [],
+    ok: true,
+    value: {
+      source_language: fallback.sourceLanguage,
+      target_language: fallback.targetLanguage,
+      detected_style: fallback.detectedStyle,
+      translation: trimmed,
+      segments: [],
+      notes: [],
+    },
+    recovery: 'plain_text',
   };
 }
 
@@ -440,6 +508,134 @@ function detectLanguage(text) {
 // Fixed routing: Chinese -> English; every other language -> Chinese.
 function routeTarget(source) {
   return source === 'zh' ? 'en' : 'zh';
+}
+
+// ---- Streaming internals (MiMo SSE in, Silvite NDJSON out) ----
+
+// Application-layer stream protocol. The frontend never sees MiMo's SSE or
+// any provider detail - only these events, one JSON object per line.
+//   start  { mode }
+//   delta  { text }        (provisional translation text; suppressed for comic)
+//   reset  { reason }      (first attempt failed; provisional text is void)
+//   final  { result }      (canonical result - the only source of truth)
+//   error  { code, message }
+const MAX_ATTEMPTS = 2; // initial try + exactly one automatic retry
+
+const FAILURE_MESSAGES = {
+  OUTPUT_TRUNCATED: '译文过长，模型未能完整返回结果。请缩短输入后重试。',
+  MODEL_EMPTY_RESPONSE: '翻译服务返回为空，请稍后重试。',
+  MODEL_FORMAT_FAILURE: '翻译服务返回格式异常，请重试。',
+  MODEL_UPSTREAM_ERROR: '翻译服务暂时不可用，请稍后重试。',
+  MODEL_STREAM_INTERRUPTED: '翻译连接中断，请重试。',
+  MODEL_PARSE_FAILURE: '翻译服务返回格式异常，请重试。',
+};
+
+function failureEvent(code) {
+  return {
+    type: 'error',
+    code,
+    message: FAILURE_MESSAGES[code] || FAILURE_MESSAGES.MODEL_UPSTREAM_ERROR,
+  };
+}
+
+// Incremental SSE line parser. Chunk boundaries are arbitrary: one event may
+// span several chunks and one chunk may contain several events. CRLF/LF both
+// supported; malformed lines are skipped.
+export function createSseEventParser() {
+  let buffer = '';
+  return {
+    push(chunk) {
+      buffer += chunk;
+      const events = [];
+      let newlineAt;
+      while ((newlineAt = buffer.indexOf('\n')) !== -1) {
+        let line = buffer.slice(0, newlineAt);
+        buffer = buffer.slice(newlineAt + 1);
+        if (line.endsWith('\r')) line = line.slice(0, -1);
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('data:')) continue;
+        const payload = trimmed.slice(5).trim();
+        if (!payload) continue;
+        if (payload === '[DONE]') {
+          events.push({ done: true });
+          continue;
+        }
+        try {
+          events.push({ json: JSON.parse(payload) });
+        } catch {
+          // Malformed SSE payload: skip the line, keep the stream alive.
+        }
+      }
+      return events;
+    },
+  };
+}
+
+// Consumes an OpenAI-compatible SSE body, accumulating message content and
+// the terminal finish_reason. onDelta receives each content chunk as it
+// arrives (may be null when the caller only wants the full content).
+export async function consumeMimoSse(response, onDelta) {
+  const parser = createSseEventParser();
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let content = '';
+  let finishReason = null;
+
+  const handleEvents = (events) => {
+    for (const event of events) {
+      if (event.done) continue;
+      const choice = event.json?.choices?.[0];
+      if (!choice) continue;
+      const delta = choice.delta?.content;
+      if (typeof delta === 'string' && delta) {
+        content += delta;
+        if (onDelta) onDelta(delta);
+      }
+      if (choice.finish_reason) finishReason = choice.finish_reason;
+    }
+  };
+
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    handleEvents(parser.push(decoder.decode(value, { stream: true })));
+  }
+  handleEvents(parser.push(decoder.decode()));
+  return { content, finishReason };
+}
+
+// Single canonical finalization pipeline shared by every mode: parse →
+// language/style normalize → comic reply_to enforcement → comic
+// deterministic translation → sanitized payload.
+function buildCanonicalResult({ model, fallback, mode, imageDataUrl }) {
+  const sourceLanguage = normalizeLang(model.source_language, fallback.sourceLanguage);
+
+  // Comic + image: rebuild the main translation deterministically from the
+  // structured segments so the UI never depends on the model's free-text
+  // translation layout. Fallback: keep the model's translation whenever
+  // segments are missing or unusable - a structural failure must never
+  // produce an empty result.
+  let translation = model.translation || '';
+  if (mode === 'comic' && imageDataUrl && hasUsableComicSegments(model.segments)) {
+    enforceReplyOrders(model.segments);
+    const built = buildComicTranslation(model.segments);
+    if (built) translation = built;
+  }
+
+  return {
+    source_language: sourceLanguage,
+    target_language: normalizeLang(model.target_language, routeTarget(sourceLanguage)),
+    // For explicit modes the requested style IS the style; the model's own
+    // classification is only meaningful for auto mode.
+    detected_style: mode !== 'auto' ? mode : (model.detected_style || fallback.detectedStyle),
+    translation,
+    // detected_text is only meaningful for image mode; in text mode the
+    // user's input IS the source, so any model-invented "source" is dropped.
+    detected_text: imageDataUrl ? (model.detected_text || null) : null,
+    // Segments pass through untouched so panel/order/speaker survive.
+    segments: Array.isArray(model.segments) ? model.segments : [],
+    notes: Array.isArray(model.notes) ? model.notes : [],
+  };
 }
 
 export async function onRequest(context) {
@@ -515,31 +711,12 @@ export async function onRequest(context) {
       messages.push({ role: 'user', content: text });
     }
 
-    const mimoResponse = await fetch(MIMO_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'mimo-v2.5',
-        messages,
-        max_completion_tokens: 4096,
-        temperature: 0.3,
-      }),
+    const initialBudget = getCompletionBudget({
+      textLength: (text || '').length,
+      hasImage: Boolean(imageDataUrl),
+      mode: composition.mode,
+      env,
     });
-
-    if (!mimoResponse.ok) {
-      const errorText = await mimoResponse.text();
-      console.error('MiMo API error:', errorText);
-      return new Response(JSON.stringify({ error: 'Translation service error' }), { status: 502, headers });
-    }
-
-    const data = await mimoResponse.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) {
-      return new Response(JSON.stringify({ error: 'Empty response from translation service' }), { status: 502, headers });
-    }
 
     const fallbackSource = detectLanguage(text || '');
     const fallback = {
@@ -548,39 +725,116 @@ export async function onRequest(context) {
       detectedStyle: composition.mode,
     };
 
-    const parsed = parseModelContent(content, fallback);
-    const sourceLanguage = normalizeLang(parsed.source_language, fallback.sourceLanguage);
+    const stream = new ReadableStream({
+      async start(controller) {
+        const encoder = new TextEncoder();
+        const send = (event) => controller.enqueue(encoder.encode(JSON.stringify(event) + '\n'));
 
-    // Comic + image: rebuild the main translation deterministically from the
-    // structured segments so the UI never depends on the model's free-text
-    // translation layout. Fallback: keep the model's translation whenever
-    // segments are missing or unusable - a structural failure must never
-    // produce an empty result. One single MiMo request; no second model call.
-    let translation = parsed.translation || '';
-    if (composition.mode === 'comic' && imageDataUrl && hasUsableComicSegments(parsed.segments)) {
-      // Execute the model's declared reply dependencies before ordering.
-      enforceReplyOrders(parsed.segments);
-      const built = buildComicTranslation(parsed.segments);
-      if (built) translation = built;
-    }
+        try {
+          send({ type: 'start', mode: composition.mode });
 
-    return new Response(
-      JSON.stringify({
-        source_language: sourceLanguage,
-        target_language: normalizeLang(parsed.target_language, routeTarget(sourceLanguage)),
-        // For explicit modes the requested style IS the style; the model's own
-        // classification is only meaningful for auto mode.
-        detected_style: composition.mode !== 'auto' ? composition.mode : (parsed.detected_style || fallback.detectedStyle),
-        translation,
-        // detected_text is only meaningful for image mode; in text mode the
-        // user's input IS the source, so any model-invented "source" is dropped.
-        detected_text: imageDataUrl ? (parsed.detected_text || null) : null,
-        // Segments pass through untouched so panel/order/speaker survive.
-        segments: Array.isArray(parsed.segments) ? parsed.segments : [],
-        notes: Array.isArray(parsed.notes) ? parsed.notes : [],
-      }),
-      { status: 200, headers },
-    );
+          let budget = initialBudget;
+          let lastFailureCode = null;
+
+          for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+            const mimoResponse = await fetch(MIMO_API_URL, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${apiKey}`,
+              },
+              body: JSON.stringify({
+                model: 'mimo-v2.5',
+                messages,
+                // Translation needs no chain-of-thought; disabling thinking
+                // also restores real control over temperature (thinking mode
+                // forces temperature 1.0).
+                thinking: { type: 'disabled' },
+                max_completion_tokens: budget,
+                temperature: 0.3,
+                stream: true,
+              }),
+            });
+
+            if (!mimoResponse.ok) {
+              // Provider detail stays in the server log only.
+              const errorText = await mimoResponse.text();
+              console.error('MiMo API error:', errorText);
+              throw { code: 'MODEL_UPSTREAM_ERROR' };
+            }
+
+            let consumed;
+            try {
+              consumed = await consumeMimoSse(mimoResponse, null);
+            } catch (streamError) {
+              console.error('MiMo stream interrupted:', streamError);
+              throw { code: 'MODEL_STREAM_INTERRUPTED' };
+            }
+
+            const { content, finishReason } = consumed;
+            if (!content) {
+              lastFailureCode = 'MODEL_EMPTY_RESPONSE';
+              if (attempt < MAX_ATTEMPTS - 1) continue;
+              throw { code: 'MODEL_EMPTY_RESPONSE' };
+            }
+
+            if (finishReason === 'length') {
+              // Truncated output: never usable, never raw-fallback.
+              lastFailureCode = 'OUTPUT_TRUNCATED';
+              if (attempt < MAX_ATTEMPTS - 1) {
+                budget = getRetryCompletionBudget(budget);
+                continue;
+              }
+              throw { code: 'OUTPUT_TRUNCATED' };
+            }
+
+            const parsed = parseModelContent(content, fallback, finishReason);
+            if (parsed.ok) {
+              send({
+                type: 'final',
+                result: buildCanonicalResult({
+                  model: parsed.value,
+                  fallback,
+                  mode: composition.mode,
+                  imageDataUrl,
+                }),
+              });
+              return;
+            }
+
+            // Structured-looking output that failed to parse: incomplete or
+            // malformed protocol data - never shown to the user, never
+            // raw-fallback. Retry once, then give up.
+            lastFailureCode = parsed.reason === 'truncated_json' ? 'OUTPUT_TRUNCATED' : 'MODEL_FORMAT_FAILURE';
+            if (attempt < MAX_ATTEMPTS - 1) {
+              if (parsed.reason === 'truncated_json') budget = getRetryCompletionBudget(budget);
+              continue;
+            }
+            throw { code: lastFailureCode };
+          }
+
+          throw { code: lastFailureCode || 'MODEL_UPSTREAM_ERROR' };
+        } catch (error) {
+          console.error('Translation failure:', error?.code || error);
+          try {
+            send(failureEvent(error?.code));
+          } catch {
+            // Client already gone; nothing to send.
+          }
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        ...headers,
+        'Content-Type': 'application/x-ndjson; charset=utf-8',
+        'Cache-Control': 'no-store',
+      },
+    });
   } catch (error) {
     console.error('Translation error:', error);
     return new Response(JSON.stringify({ error: 'Internal server error' }), { status: 500, headers });
