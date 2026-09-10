@@ -4,7 +4,7 @@ import { ExportMenu } from '../ExportMenu/ExportMenu';
 import { languageLabel } from '../../services/export/types';
 
 export function ResultArea() {
-  const { result, isLoading, error, isStreaming, streamingText, streamStatus } = useTranslationStore();
+  const { result, isLoading, error, isStreaming, streamingText, streamStatus, progressPercent } = useTranslationStore();
   
   if (!result && !isLoading && !error) {
     return null;
@@ -16,7 +16,7 @@ export function ResultArea() {
       {result && !isLoading && <ResultCard result={result} />}
       {!result && !error && isLoading && (
         isStreaming && (streamingText || streamStatus) ? (
-          <StreamingCard text={streamingText} status={streamStatus} />
+          <StreamingCard text={streamingText} status={streamStatus} progress={progressPercent} />
         ) : (
           <LoadingState />
         )
@@ -27,7 +27,7 @@ export function ResultArea() {
 
 // Provisional streaming view. The text shown here is NOT the canonical
 // result - the final event replaces it wholesale when it arrives.
-function StreamingCard({ text, status }: { text: string; status: string | null }) {
+function StreamingCard({ text, status, progress }: { text: string; status: string | null; progress: number | null }) {
   return (
     <div className="bg-white rounded-xl border border-[#e0e0e0]">
       <div className="flex items-center justify-between gap-2 px-4 py-4 md:px-7 md:py-5 bg-[#fafafa] border-b border-[#f0f0f0] rounded-t-xl min-w-0">
@@ -42,6 +42,11 @@ function StreamingCard({ text, status }: { text: string; status: string | null }
           <span className="text-[13px] text-[#888888] whitespace-nowrap min-w-0 truncate">{status}</span>
         )}
       </div>
+      {progress !== null && (
+        <div className="h-1 bg-[#f0f0f0]" aria-label={`翻译进度 ${progress}%`}>
+          <div className="h-full bg-[#1677ff] transition-[width] duration-300" style={{ width: `${progress}%` }} />
+        </div>
+      )}
       <div className="px-4 py-4 md:px-7 md:py-6">
         {text ? (
           <p className="whitespace-pre-wrap text-[17px] leading-[1.8] text-[#1a1a1a] min-h-[60px]">

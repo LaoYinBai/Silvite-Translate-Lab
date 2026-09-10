@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseModelContent } from '../functions/api/translate.js';
+import { parseModelContent } from '../cloud-functions/api/translate.js';
 
 const FALLBACK = {
   sourceLanguage: 'en',
@@ -26,6 +26,12 @@ test('valid JSON parses without recovery', () => {
 
 test('fenced JSON parses', () => {
   const r = parseModelContent('```json\n' + validPayload + '\n```', FALLBACK, 'stop');
+  assert.equal(r.ok, true);
+  assert.equal(r.value.translation, '完整的译文');
+});
+
+test('JSON surrounded by explanation text is recovered without exposing the wrapper', () => {
+  const r = parseModelContent(`Here is the result:\n${validPayload}\nThank you.`, FALLBACK, 'stop');
   assert.equal(r.ok, true);
   assert.equal(r.value.translation, '完整的译文');
 });
@@ -73,6 +79,29 @@ test('truncated notes array (closed braces missing) is rejected', () => {
   const r = parseModelContent(truncated, FALLBACK, 'stop');
   assert.equal(r.ok, false);
   assert.match(r.reason, /truncated_json|malformed_json/);
+});
+
+test('partial JSON with an explanation prefix never falls back to raw text', () => {
+  const r = parseModelContent('结果如下：\n{"source_language":"en","translation":"半截', FALLBACK, 'stop');
+  assert.equal(r.ok, false);
+  assert.match(r.reason, /truncated_json|malformed_json/);
+});
+
+test('malformed fenced JSON never falls back to raw text', () => {
+  const r = parseModelContent('说明\n```json\n{"translation":"半截\n```', FALLBACK, 'stop');
+  assert.equal(r.ok, false);
+});
+
+test('arbitrary JSON without canonical translation is rejected', () => {
+  const r = parseModelContent('{"message":"provider metadata","data":{"x":1}}', FALLBACK, 'stop');
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'malformed_json');
+});
+
+test('a translation field containing another malformed protocol is rejected', () => {
+  const outer = JSON.stringify({ translation: '{"translation":"nested', segments: [] });
+  const r = parseModelContent(outer, FALLBACK, 'stop');
+  assert.equal(r.ok, false);
 });
 
 test('empty content reports empty', () => {

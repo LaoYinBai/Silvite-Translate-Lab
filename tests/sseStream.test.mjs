@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSseEventParser, consumeMimoSse } from '../functions/api/translate.js';
+import { createSseEventParser, consumeMimoSse } from '../cloud-functions/api/translate.js';
 
 function sseResponse(chunks) {
   const encoder = new TextEncoder();

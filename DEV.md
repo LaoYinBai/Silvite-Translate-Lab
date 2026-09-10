@@ -2358,7 +2358,7 @@ API 网关负责处理认证、限流和请求路由。
 ```text
 Frontend (translateStream)
    → POST /api/translate
-   → EdgeOne Function（stream:true 调 MiMo）
+   → EdgeOne Cloud Function（stream:true 调 MiMo）
    → 消费 MiMo SSE（createSseEventParser / consumeMimoSse）
    → 增量 translation extractor（只解码 "translation" 字段值）
    → Silvite SSE 事件（start / delta / reset / final / error）
@@ -2401,9 +2401,48 @@ Frontend (translateStream)
 
 ---
 
-*文档版本: 1.3.0 | 最后更新: 2026-09-09*
+## 十九、文档与长文本翻译（2026-09-10）
+
+### 19.1 运行时
+
+- `/api/translate` 的唯一实现位于 `cloud-functions/api/translate.js`。
+- 根目录 `edgeone.json` 配置 `cloudFunctions.nodejs.maxDuration = 120`。
+- `functions/api/translate.js` 已删除，避免两个 handler 同时映射同一路由。
+- 本地 `npm run api` 直接导入 Cloud Function handler，线上和本地保持同源。
+
+### 19.2 统一管线
+
+普通文本与 TXT / MD / DOCX / PDF 提取正文统一进入
+`src/services/document/translateDocument.ts`。`chunker.ts` 根据源语言采用保守目标长度，
+并按标题/段落、列表、完整句子、字符硬切的优先级分块。Markdown fenced code block
+原样通过，不发送给模型。
+
+每块独立请求 `/api/translate`，所以每块拥有新的 120 秒生命周期。浏览器在 95 秒
+执行软截止，超时后只细分当前块；已完成块保留，最终按原顺序拼成一个 canonical
+result。界面只显示自然语言状态和百分比，不暴露 chunk 编号。
+
+### 19.3 文件边界
+
+- 白名单：PDF、DOCX、TXT、MD。
+- 单文件上限：10MB；提取正文上限：100,000 字符。
+- PDF 只处理文本层；无文本层时提示用户更换文件，不新增 OCR。
+- 扩展名、MIME、PDF/DOCX 文件签名和解析结果共同校验。
+
+### 19.4 稳定性约束
+
+- JSON parser 对 fenced、前后解释、partial、malformed 和嵌套协议数据执行恢复或重试，
+  结构化协议永不作为正文 fallback。
+- 流式 extractor 只释放已确认的顶层 `translation` 字符串；无法分类的原始内容等待
+  canonical final，不在 provisional UI 中冒险展示。
+- `reset()`、`loadDemoSample()` 和新翻译都会使 request generation 失效并 abort 旧流；
+  delta/reset/final/catch 均检查 generation 与 AbortSignal。
+
+---
+
+*文档版本: 1.4.0 | 最后更新: 2026-09-10*
 
 ### 更新记录
+- v1.4.0 (2026-09-10): Cloud Functions 120 秒运行时、统一长文本/文件管线、局部超时恢复、JSON 防泄漏与请求竞态修复
 - v1.3.0 (2026-09-09): 第十八章「翻译请求生命周期（Streaming）」——MiMo SSE 消费、自有 SSE 事件协议、截断防护与自动重试、thinking 关闭、Comic 抑制流式、竞态防护
 - v1.2.0 (2026-09-08): 新增第十章「导出 PDF / Word 功能」、图片上传交互、详细工程实现和 UI 规范
 - v1.1.0 (2026-09-08): 新增第九章「图片上传（增强）」，包括 Drag & Drop、剪贴板粘贴、图片预览等详细规范

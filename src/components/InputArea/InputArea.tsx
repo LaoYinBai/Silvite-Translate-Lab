@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslationStore, type TranslationMode } from '../../store/translationStore';
+import { parseDocumentFile } from '../../services/document/fileParser';
 
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const MAX_SIZE = 10 * 1024 * 1024;
@@ -82,6 +83,13 @@ function InputTypeToggle() {
       >
         图片
       </button>
+      <button
+        type="button"
+        onClick={() => setInputMode('file')}
+        className={`segmented-control-item ${inputMode === 'file' ? 'active' : ''}`}
+      >
+        文件
+      </button>
     </div>
   );
 }
@@ -133,23 +141,28 @@ function AdvancedToggle({ showAdvanced, onToggle }: {
   );
 }
 
-function ClearButton({ inputText, inputImage, onClear, className }: {
+function ClearButton({ inputText, inputImage, hasDocument, onClear, className }: {
   inputText: string;
   inputImage: string | null;
+  hasDocument: boolean;
   onClear: () => void;
   className: string;
 }) {
   return (
-    <button onClick={onClear} disabled={!inputText && !inputImage} className={className}>
+    <button onClick={onClear} disabled={!inputText && !inputImage && !hasDocument} className={className}>
       清空
     </button>
   );
 }
 
 function TranslateButton({ className = '' }: { className?: string }) {
-  const { inputText, inputImage, isLoading } = useTranslationStore();
+  const { inputText, inputImage, inputMode, documentFile, isLoading } = useTranslationStore();
   const overLimit = inputText.length > MAX_INPUT_CHARS;
-  const hasInput = (Boolean(inputText.trim()) && !overLimit) || Boolean(inputImage);
+  const hasInput = inputMode === 'file'
+    ? Boolean(documentFile)
+    : inputMode === 'image'
+      ? Boolean(inputImage)
+      : Boolean(inputText.trim()) && !overLimit;
   return (
     <button
       onClick={() => useTranslationStore.getState().translate()}
@@ -185,6 +198,11 @@ export function InputArea() {
     inputMode, 
     setInputMode,
     imageSource,
+    documentFile,
+    fileStatus,
+    fileError,
+    setDocumentFile,
+    setFileStatus,
     openPreview,
     context,
     setContext,
@@ -199,6 +217,7 @@ export function InputArea() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const documentInputRef = useRef<HTMLInputElement>(null);
   
   const processFile = useCallback(async (file: File) => {
     setImageError(null);
@@ -219,6 +238,18 @@ export function InputArea() {
       setImageError(err instanceof Error ? err.message : '图片处理失败');
     }
   }, [setInputImage, setInputMode]);
+
+  const processDocument = useCallback(async (file: File) => {
+    setFileStatus('parsing');
+    try {
+      const parsed = await parseDocumentFile(file);
+      setDocumentFile(parsed);
+      setInputMode('file');
+    } catch (error) {
+      setDocumentFile(null);
+      setFileStatus('error', error instanceof Error ? error.message : '文件解析失败');
+    }
+  }, [setDocumentFile, setFileStatus, setInputMode]);
   
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -247,16 +278,23 @@ export function InputArea() {
     
     const files = e.dataTransfer.files;
     if (files.length > 0) {
-      processFile(files[0]);
+      if (inputMode === 'file') processDocument(files[0]);
+      else processFile(files[0]);
     }
-  }, [processFile]);
+  }, [inputMode, processDocument, processFile]);
   
-  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
       processFile(files[0]);
     }
   }, [processFile]);
+
+  const handleDocumentSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) void processDocument(file);
+    e.target.value = '';
+  }, [processDocument]);
   
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
@@ -288,12 +326,18 @@ export function InputArea() {
   const handleReplaceImage = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
+
+  const handleChooseDocument = useCallback(() => {
+    documentInputRef.current?.click();
+  }, []);
   
   const handleTranslate = useCallback(() => {
     if (inputText.length > MAX_INPUT_CHARS) return;
-    if (!inputText.trim() && !inputImage) return;
+    if (inputMode === 'file' && !documentFile) return;
+    if (inputMode === 'image' && !inputImage) return;
+    if (inputMode === 'text' && !inputText.trim()) return;
     useTranslationStore.getState().translate();
-  }, [inputText, inputImage]);
+  }, [documentFile, inputMode, inputText, inputImage]);
   
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -305,7 +349,12 @@ export function InputArea() {
   const handleClear = useCallback(() => {
     setInputText('');
     setInputImage(null);
-  }, [setInputText, setInputImage]);
+    setDocumentFile(null);
+  }, [setDocumentFile, setInputText, setInputImage]);
+
+  const formatFileSize = (size: number) => size >= 1024 * 1024
+    ? `${(size / 1024 / 1024).toFixed(1)} MB`
+    : `${Math.max(1, Math.round(size / 1024))} KB`;
   
   return (
     <div className="w-full">
@@ -385,6 +434,50 @@ export function InputArea() {
           </div>
         )}
 
+        {inputMode === 'file' && (
+          <div className="p-4 md:p-6">
+            {!documentFile ? (
+              <button
+                type="button"
+                onClick={handleChooseDocument}
+                disabled={fileStatus === 'parsing' || isLoading}
+                className="w-full min-h-[180px] md:min-h-[220px] rounded-xl border-2 border-dashed border-[#d9d9d9] hover:border-[#1677ff] hover:bg-[#f7fbff] transition-colors flex flex-col items-center justify-center gap-2 text-center disabled:cursor-wait disabled:opacity-70"
+              >
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M7 3h7l4 4v14H7a2 2 0 01-2-2V5a2 2 0 012-2z" stroke="#b0b0b0" strokeWidth="1.6"/>
+                  <path d="M14 3v5h5M9 13h6M9 17h5" stroke="#b0b0b0" strokeWidth="1.6" strokeLinecap="round"/>
+                </svg>
+                <span className="text-[15px] font-medium text-[#555555]">
+                  {fileStatus === 'parsing' ? '正在解析文件…' : '拖入文件，或点击选择'}
+                </span>
+                <span className="text-[12px] text-[#999999]">PDF / DOCX / TXT / MD · 最大 10MB</span>
+              </button>
+            ) : (
+              <div className="min-h-[180px] md:min-h-[220px] flex items-center justify-center">
+                <div className="w-full max-w-[560px] rounded-lg border border-[#e0e0e0] bg-[#fafafa] p-4 md:p-5">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-white border border-[#e0e0e0] flex items-center justify-center text-[12px] font-semibold text-[#1677ff] uppercase">
+                      {documentFile.kind}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[15px] font-medium text-[#1a1a1a] truncate">{documentFile.name}</p>
+                      <p className="mt-1 text-[12px] text-[#888888]">
+                        {documentFile.kind.toUpperCase()} · {formatFileSize(documentFile.size)} · 已提取 {documentFile.characterCount.toLocaleString()} 个字符
+                      </p>
+                      <p className="mt-2 text-[12px] text-[#52a246]">文件解析完成，可以开始翻译</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex gap-2">
+                    <button type="button" onClick={handleChooseDocument} disabled={isLoading} className="btn btn-secondary h-[36px]">更换文件</button>
+                    <button type="button" onClick={() => setDocumentFile(null)} disabled={isLoading} className="btn btn-ghost h-[36px]">删除</button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {fileError && <p className="mt-3 text-[13px] text-[#ff4d4f]">{fileError}</p>}
+          </div>
+        )}
+
         {/* Text mode: the classic textarea panel. Mutually exclusive with the
             image panels above. */}
         {inputMode === 'text' && (
@@ -417,7 +510,14 @@ export function InputArea() {
           ref={fileInputRef}
           type="file"
           accept=".jpg,.jpeg,.png,.webp"
-          onChange={handleFileSelect}
+          onChange={handleImageSelect}
+          className="hidden"
+        />
+        <input
+          ref={documentInputRef}
+          type="file"
+          accept=".pdf,.docx,.txt,.md,.markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
+          onChange={handleDocumentSelect}
           className="hidden"
         />
 
@@ -447,6 +547,7 @@ export function InputArea() {
               <ClearButton
                 inputText={inputText}
                 inputImage={inputImage}
+                hasDocument={Boolean(documentFile)}
                 onClear={handleClear}
                 className="btn btn-ghost h-11 px-3"
               />
@@ -471,6 +572,7 @@ export function InputArea() {
               <ClearButton
                 inputText={inputText}
                 inputImage={inputImage}
+                hasDocument={Boolean(documentFile)}
                 onClear={handleClear}
                 className="btn btn-ghost h-[36px] px-3"
               />

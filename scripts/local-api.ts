@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { onRequest } from '../functions/api/translate.js';
+import { onRequest } from '../cloud-functions/api/translate.js';
 
 const PORT = 3001;
 

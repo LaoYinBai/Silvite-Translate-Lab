@@ -1,6 +1,6 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { onRequest } from '../functions/api/translate.js';
+import { onRequest } from '../cloud-functions/api/translate.js';
 import { mimoSseResponse, readSseEvents, finalEventOf, makeRequest } from './helpers.mjs';
 
 const ENV = { MIMO_API_KEY: 'test-key', RATE_LIMIT: '10' };

@@ -9,7 +9,7 @@ export function ExportMenu() {
   const [error, setError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const { result, isDemoMode, inputText, mode, context, terminology } = useTranslationStore();
+  const { result, isDemoMode, inputText, inputMode, documentFile, mode, context, terminology } = useTranslationStore();
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -29,7 +29,9 @@ export function ExportMenu() {
       sourceLanguage: result.sourceLanguage,
       targetLanguage: result.targetLanguage,
       mode,
-      sourceText: inputText || result.detectedText || '',
+      sourceText: inputMode === 'file'
+        ? documentFile?.text || ''
+        : inputText || result.detectedText || '',
       translation: result.translation,
       detectedText: result.detectedText,
       context: context || undefined,

@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { translateStream as apiTranslateStream, checkHealth } from '../api/client';
 import { DEMO_SAMPLES } from '../demo/samples';
+import { translateDocument, type DocumentProgressStatus } from '../services/document/translateDocument';
+import type { ParsedDocumentFile } from '../services/document/fileParser';
 
 export type TranslationMode = 
   | 'auto'
@@ -10,7 +12,7 @@ export type TranslationMode =
   | 'business'
   | 'comic';
 
-export type InputMode = 'text' | 'image';
+export type InputMode = 'text' | 'image' | 'file';
 
 // Where the current image came from. Demo images are fixed sample content
 // (no remove/replace affordances); user images are real uploads.
@@ -72,6 +74,9 @@ interface TranslationState {
   inputImage: string | null;
   inputMode: InputMode;
   imageSource: ImageSource;
+  documentFile: ParsedDocumentFile | null;
+  fileStatus: 'idle' | 'parsing' | 'ready' | 'error';
+  fileError: string | null;
 
   // Lightbox (pure UI; rendered by <Lightbox /> at the app root)
   previewImage: PreviewImage | null;
@@ -94,6 +99,7 @@ interface TranslationState {
   streamingText: string;
   isStreaming: boolean;
   streamStatus: string | null;
+  progressPercent: number | null;
   
   // Explicit demo state. Demo data may only be shown while this is true;
   // any real user action (editing, real image, translating) flips it off.
@@ -108,6 +114,8 @@ interface TranslationState {
   setInputText: (text: string) => void;
   setInputImage: (image: string | null) => void;
   setInputMode: (mode: InputMode) => void;
+  setDocumentFile: (file: ParsedDocumentFile | null) => void;
+  setFileStatus: (status: TranslationState['fileStatus'], error?: string | null) => void;
   openPreview: (src: string, alt: string) => void;
   closePreview: () => void;
   setMode: (mode: TranslationMode) => void;
@@ -132,7 +140,8 @@ interface TranslationState {
 let activeAbort: AbortController | null = null;
 let requestGeneration = 0;
 
-function abortActiveStream() {
+function invalidateActiveStream() {
+  requestGeneration += 1;
   if (activeAbort) {
     activeAbort.abort();
     activeAbort = null;
@@ -144,6 +153,9 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   inputImage: null,
   inputMode: 'text',
   imageSource: null,
+  documentFile: null,
+  fileStatus: 'idle',
+  fileError: null,
   previewImage: null,
   
   mode: 'auto',
@@ -162,6 +174,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   streamingText: '',
   isStreaming: false,
   streamStatus: null,
+  progressPercent: null,
   isDemoMode: false,
   activeDemoId: null,
   isServiceOnline: true,
@@ -187,6 +200,15 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
     return { inputImage: image, imageSource: 'user', previewImage: null };
   }),
   setInputMode: (mode) => set({ inputMode: mode }),
+  setDocumentFile: (file) => set({
+    documentFile: file,
+    fileStatus: file ? 'ready' : 'idle',
+    fileError: null,
+    isDemoMode: false,
+    activeDemoId: null,
+    result: null,
+  }),
+  setFileStatus: (status, error = null) => set({ fileStatus: status, fileError: error }),
   openPreview: (src, alt) => set({ previewImage: { src, alt } }),
   closePreview: () => set({ previewImage: null }),
   setMode: (mode) => set({ mode }),
@@ -212,13 +234,16 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
     if (!demo) return;
 
     // Switching to a demo voids any in-flight real translation.
-    abortActiveStream();
+    invalidateActiveStream();
 
     set({
       inputText: demo.inputType === 'text' ? demo.source : '',
       inputImage: null,
       inputMode: demo.inputType,
       imageSource: demo.inputType === 'image' ? 'demo' : null,
+      documentFile: null,
+      fileStatus: 'idle',
+      fileError: null,
       mode: demo.mode,
       context: demo.context ?? '',
       terminology: demo.terminology ?? '',
@@ -232,6 +257,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       isStreaming: false,
       streamingText: '',
       streamStatus: null,
+      progressPercent: null,
     });
 
     if (demo.inputType === 'image' && demo.demoImage) {
@@ -257,15 +283,19 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   
   translate: async () => {
     const state = get();
-    if (!state.inputText.trim() && !state.inputImage) return;
+    const documentText = state.inputMode === 'file' ? state.documentFile?.text || '' : state.inputText;
+    if (state.inputMode === 'file' && !state.documentFile) return;
+    if (state.inputMode === 'image' && !state.inputImage) return;
+    if (state.inputMode === 'text' && !documentText.trim()) return;
     
     // Translating is a real action: exit demo and drop any demo result.
     // A demo image being translated has been adopted as real content, so it
     // becomes a user image (full remove/replace affordances from now on).
-    abortActiveStream();
-    const generation = ++requestGeneration;
+    invalidateActiveStream();
+    const generation = requestGeneration;
     const controller = new AbortController();
     activeAbort = controller;
+    const isCurrent = () => generation === requestGeneration && !controller.signal.aborted;
 
     set({
       isLoading: true,
@@ -279,24 +309,17 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       // Comic streams no translation text (final is rebuilt from segments);
       // surface what the backend is doing instead.
       streamStatus: state.mode === 'comic' ? '正在分析漫画结构…' : null,
+      progressPercent: state.inputMode === 'image' ? null : 0,
     });
     
     try {
-      const response = await apiTranslateStream({
-        text: state.inputText || undefined,
-        imageDataUrl: state.inputImage || undefined,
-        mode: state.mode,
-        context: state.context || undefined,
-        terminology: state.terminology || undefined,
-        preserveNames: state.preserveNames,
-        explainTranslation: state.explainTranslation
-      }, {
-        onDelta: (text) => {
-          if (generation !== requestGeneration || controller.signal.aborted) return;
+      const streamHandlers = {
+        onDelta: (text: string) => {
+          if (!isCurrent()) return;
           set((s) => ({ streamingText: s.streamingText + text }));
         },
-        onReset: (reason) => {
-          if (generation !== requestGeneration || controller.signal.aborted) return;
+        onReset: (reason: string) => {
+          if (!isCurrent()) return;
           set({
             streamingText: '',
             streamStatus: reason === 'stream_interrupted' || reason === 'transport_interrupted'
@@ -306,10 +329,46 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
                 : '译文较长，正在重新生成完整结果…',
           });
         },
-      }, controller.signal);
+      };
+
+      const statusText = (status: DocumentProgressStatus, percent: number) => {
+        if (status === 'analyzing') return '正在分析长文本…';
+        if (status === 'retrying-part') return '正在重新处理部分内容…';
+        if (status === 'assembling') return '正在整理完整译文…';
+        return `正在翻译长文内容… 已完成 ${percent}%`;
+      };
+
+      const response = state.inputMode === 'image'
+        ? await apiTranslateStream({
+            text: state.inputText || undefined,
+            imageDataUrl: state.inputImage || undefined,
+            mode: state.mode,
+            context: state.context || undefined,
+            terminology: state.terminology || undefined,
+            preserveNames: state.preserveNames,
+            explainTranslation: state.explainTranslation,
+          }, streamHandlers, controller.signal)
+        : await translateDocument({
+            text: documentText,
+            mode: state.mode,
+            context: state.context || undefined,
+            terminology: state.terminology || undefined,
+            preserveNames: state.preserveNames,
+            explainTranslation: state.explainTranslation,
+          }, {
+            signal: controller.signal,
+            onProgress: ({ percent, status, provisionalText }) => {
+              if (!isCurrent()) return;
+              set({
+                streamingText: provisionalText,
+                streamStatus: statusText(status, percent),
+                progressPercent: percent,
+              });
+            },
+          });
 
       // A newer session started meanwhile: this result is stale.
-      if (generation !== requestGeneration) return;
+      if (!isCurrent()) return;
 
       set({
         result: {
@@ -328,14 +387,16 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
         isStreaming: false,
         streamingText: '',
         streamStatus: null,
+        progressPercent: 100,
       });
     } catch (err) {
-      if (generation !== requestGeneration) return;
+      if (!isCurrent()) return;
       set({
         isLoading: false,
         isStreaming: false,
         streamingText: '',
         streamStatus: null,
+        progressPercent: null,
         error: err instanceof Error ? err.message : '翻译服务暂时不可用，请稍后重试'
       });
     } finally {
@@ -348,12 +409,15 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   // (incl. anything a demo sample filled in), result/notes and demo state.
   // Deliberately KEEPS global app state: theme, service status.
   reset: () => {
-    abortActiveStream();
+    invalidateActiveStream();
     set({
       inputText: '',
       inputImage: null,
       inputMode: 'text',
       imageSource: null,
+      documentFile: null,
+      fileStatus: 'idle',
+      fileError: null,
       mode: 'auto',
       context: '',
       terminology: '',
@@ -368,6 +432,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       isStreaming: false,
       streamingText: '',
       streamStatus: null,
+      progressPercent: null,
     });
   }
 }));
