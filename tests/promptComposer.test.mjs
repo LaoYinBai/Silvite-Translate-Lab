@@ -5,7 +5,7 @@ import {
   normalizeTranslationMode,
   buildTerminologySection,
   SUPPORTED_TRANSLATION_MODES,
-} from '../functions/api/translate.js';
+} from '../cloud-functions/api/translate.js';
 
 test('supports the six public translation modes', () => {
   assert.deepEqual([...SUPPORTED_TRANSLATION_MODES], ['auto', 'natural', 'literary', 'academic', 'business', 'comic']);

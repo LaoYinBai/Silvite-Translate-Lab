@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { getCompletionBudget, getRetryCompletionBudget } from '../functions/api/translate.js';
+import { getCompletionBudget, getRetryCompletionBudget } from '../cloud-functions/api/translate.js';
 
 test('short text gets the small budget', () => {
   assert.equal(getCompletionBudget({ textLength: 100 }), 4096);

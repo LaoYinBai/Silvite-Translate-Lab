@@ -304,7 +304,7 @@ Demo 数据与真实用户翻译状态相互隔离。
 │                             │
 │ Static Frontend             │
 │ +                           │
-│ Edge Function               │
+│ Node.js Cloud Function      │
 └──────────────┬──────────────┘
                │
                │ Server-side API
@@ -331,8 +331,8 @@ Demo 数据与真实用户翻译状态相互隔离。
 ## ☁️ Backend
 
 - EdgeOne Pages
-- EdgeOne Pages Functions
-- V8 Edge Runtime
+- EdgeOne Cloud Functions
+- Node.js 20 Runtime（单次执行上限 120 秒）
 - Xiaomi MiMo V2.5
 
 API：
@@ -341,16 +341,16 @@ API：
 POST /api/translate
 ```
 
-主要 Edge Function：
+主要 Cloud Function：
 
 ```text
-functions/api/translate.js
+cloud-functions/api/translate.js
 ```
 
 Prompt：
 
 ```text
-functions/api/prompts.mjs
+cloud-functions/api/prompts.mjs
 ```
 
 ### 翻译请求生命周期（Streaming）
@@ -386,6 +386,8 @@ SSE 事件协议返回（`text/event-stream`）。前端永远看不到 MiMo 协
 - **输出预算**：`getCompletionBudget()` 按输入长度/图片/模式给出
   4096–32768，`MAX_COMPLETION_TOKENS` 可覆盖（clamp [1024, 65536]），用户
   不可控。
+- **长文管线**：文本及文件正文统一按标题、段落、句子优先分块；每块独立请求，
+  95 秒软截止后只细分当前部分，已完成译文不会丢失。最终仅生成一个 canonical result。
 - **失败分类**：`OUTPUT_TRUNCATED` / `MODEL_EMPTY_RESPONSE` /
   `MODEL_FORMAT_FAILURE` / `MODEL_UPSTREAM_ERROR` / `MODEL_STREAM_INTERRUPTED`
   等仅在内部日志与错误码中区分，用户只看到中文提示；后端与前端传输层各自最多自动重试 1 次。
@@ -400,6 +402,12 @@ SSE 事件协议返回（`text/event-stream`）。前端永远看不到 MiMo 协
 - `docx`
 
 在浏览器侧生成 PDF 与 Word 文档。
+
+## 📄 文件输入
+
+支持 TXT、Markdown、DOCX 和带文本层的 PDF。文件在浏览器本地解析，提取正文后
+复用与普通文本完全相同的长文翻译管线。单文件最大 10MB，提取正文最多 100,000
+字符；扫描版或无文本层 PDF 会明确提示改用可复制文本的 PDF，不会执行低质量 OCR。
 
 ---
 
@@ -420,7 +428,7 @@ Browser
    ↓
 POST /api/translate
    ↓
-EdgeOne Function
+EdgeOne Cloud Function
    ↓
 MiMo API
 ```
@@ -589,10 +597,10 @@ RATE_LIMIT_WINDOW_MS=...
 MAX_INPUT_LENGTH=...
 ```
 
-EdgeOne Pages Functions 会将：
+EdgeOne Cloud Functions 会将：
 
 ```text
-functions/api/translate.js
+cloud-functions/api/translate.js
 ```
 
 映射为：
@@ -608,7 +616,7 @@ functions/api/translate.js
 ```text
 Silvite-Translate-Lab/
 │
-├── functions/
+├── cloud-functions/
 │   └── api/
 │       ├── prompts.mjs
 │       └── translate.js
@@ -623,6 +631,7 @@ Silvite-Translate-Lab/
 │   ├── api/
 │   ├── components/
 │   ├── demo/
+│   ├── services/document/
 │   ├── store/
 │   ├── App.tsx
 │   ├── index.css
@@ -630,6 +639,7 @@ Silvite-Translate-Lab/
 │
 ├── tests/
 │
+├── edgeone.json
 ├── package.json
 ├── vite.config.ts
 ├── tsconfig.json

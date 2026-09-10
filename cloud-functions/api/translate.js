@@ -424,6 +424,16 @@ export function parseModelContent(content, fallback, finishReason) {
     return null;
   };
 
+  const protocolPattern = /"(?:source_language|target_language|detected_style|translation|detected_text|segments|notes)"\s*:/;
+  const isCanonicalObject = (value) => {
+    if (!value || Array.isArray(value) || typeof value !== 'object') return false;
+    if (typeof value.translation !== 'string') return false;
+    const nested = value.translation.trim();
+    // A failed double-encoding recovery is protocol data, not a translation.
+    if (nested.startsWith('{') && protocolPattern.test(nested)) return false;
+    return true;
+  };
+
   const trimmed = typeof content === 'string' ? content.trim() : '';
   if (!trimmed) {
     return { ok: false, reason: 'empty' };
@@ -444,16 +454,21 @@ export function parseModelContent(content, fallback, finishReason) {
 
   for (const candidate of candidates) {
     let parsed = tryParse(candidate);
-    if (parsed) {
+    if (parsed !== undefined) {
       const unwrapped = unwrapDoubleEncoded(parsed);
-      if (unwrapped) return { ok: true, value: unwrapped.value, recovery: 'double_encoded' };
-      return { ok: true, value: parsed };
+      if (unwrapped && isCanonicalObject(unwrapped.value)) {
+        return { ok: true, value: unwrapped.value, recovery: 'double_encoded' };
+      }
+      if (isCanonicalObject(parsed)) return { ok: true, value: parsed };
+      continue;
     }
     parsed = tryParse(repairQuotes(candidate));
-    if (parsed) {
+    if (parsed !== undefined) {
       const unwrapped = unwrapDoubleEncoded(parsed);
-      if (unwrapped) return { ok: true, value: unwrapped.value, recovery: 'quote_repair+double_encoded' };
-      return { ok: true, value: parsed, recovery: 'quote_repair' };
+      if (unwrapped && isCanonicalObject(unwrapped.value)) {
+        return { ok: true, value: unwrapped.value, recovery: 'quote_repair+double_encoded' };
+      }
+      if (isCanonicalObject(parsed)) return { ok: true, value: parsed, recovery: 'quote_repair' };
     }
   }
 
@@ -462,7 +477,8 @@ export function parseModelContent(content, fallback, finishReason) {
   // would see half a protocol payload as their "translation".
   const looksStructured =
     trimmed.startsWith('{') ||
-    (trimmed.startsWith('```') && trimmed.slice(3).trimStart().startsWith('{'));
+    trimmed.includes('```') ||
+    protocolPattern.test(trimmed);
 
   if (looksStructured) {
     const truncated =
@@ -556,7 +572,7 @@ function failureEvent(code) {
 // states nothing is emitted, and the canonical final result replaces any
 // provisional text.
 export function createStreamingTranslationExtractor() {
-  let state = 'sniff';     // sniff | find_key | expect_colon | expect_quote | in_string | raw | done | dead
+  let state = 'sniff';     // sniff | find_key | expect_colon | expect_quote | in_string | done | dead
   let sniffBuf = '';
   let depth = 0;
   let inString = false;    // scanning: inside any JSON string
@@ -674,8 +690,10 @@ export function createStreamingTranslationExtractor() {
 
       if (state === 'sniff') {
         // Decide the mode from the leading shape: '{' -> structured JSON,
-        // '```json' fence -> strip the fence line then re-decide, anything
-        // else -> raw plain text (the legacy fallback).
+        // '```json' fence -> strip the fence line then re-decide. Unclassified
+        // raw text is withheld until canonical parsing finishes: this is the
+        // only way to guarantee an explanation-prefixed JSON object can never
+        // flash in the UI before its later structural bytes arrive.
         sniffBuf += next;
         const trimmed = sniffBuf.trimStart();
         if (!trimmed) { sniffBuf = ''; return ''; }
@@ -685,34 +703,33 @@ export function createStreamingTranslationExtractor() {
           // waiting and treat as raw if it grows absurdly long).
           const newlineAt = trimmed.indexOf('\n');
           if (newlineAt === -1) {
-            if (trimmed.length > 64) {
-              state = 'raw';
-              next = trimmed;
-              sniffBuf = '';
-            } else {
+            if (trimmed.length <= 64) {
               return ''; // keep accumulating: fence line not complete yet
             }
+            state = 'dead';
+            sniffBuf = '';
+            return '';
           } else {
             const firstLine = trimmed.slice(0, newlineAt).trim();
             const rest = trimmed.slice(newlineAt + 1).trimStart();
             if (/^```/.test(firstLine)) {
               if (!rest) { sniffBuf = ''; return ''; }
-              state = rest[0] === '{' ? 'find_key' : 'raw';
+              state = rest[0] === '{' ? 'find_key' : 'dead';
               next = rest;
             } else {
-              state = 'raw';
-              next = trimmed;
+              state = 'dead';
+              return '';
             }
             sniffBuf = '';
           }
         } else {
-          state = trimmed[0] === '{' ? 'find_key' : 'raw';
+          state = trimmed[0] === '{' ? 'find_key' : 'dead';
           next = trimmed;
           sniffBuf = '';
         }
       }
 
-      if (state === 'raw') return next;
+      if (state === 'dead') return '';
       if (state === 'in_string') return processInStringChunk(next);
       return processStructuralChunk(next);
     },

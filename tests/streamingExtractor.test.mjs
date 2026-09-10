@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createStreamingTranslationExtractor } from '../functions/api/translate.js';
+import { createStreamingTranslationExtractor } from '../cloud-functions/api/translate.js';
 
 // Feeds a payload through the extractor in chunks of the given size and
 // returns the concatenated streamed text.
@@ -69,8 +69,12 @@ test('object that closes before the key emits nothing', () => {
   assert.equal(stream(payload), '');
 });
 
-test('raw plain text passes through as-is', () => {
-  assert.equal(stream('这不是 JSON，就是纯文本。'), '这不是 JSON，就是纯文本。');
+test('unclassified raw plain text is withheld until canonical final', () => {
+  assert.equal(stream('这不是 JSON，就是纯文本。'), '');
+});
+
+test('explanation-prefixed JSON never appears in provisional output', () => {
+  assert.equal(stream('Here is the result:\n{"translation":"secret","notes":[]}'), '');
 });
 
 test('markdown-fenced JSON payload never leaks the fence or raw JSON', () => {

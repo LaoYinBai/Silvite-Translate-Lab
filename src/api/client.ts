@@ -62,7 +62,7 @@ class TranslationServiceError extends Error {
 }
 
 /**
- * All model calls go through the EdgeOne edge function at /api/translate.
+ * All model calls go through the EdgeOne Cloud Function at /api/translate.
  * The MiMo API key never reaches the frontend bundle.
  *
  * Streaming: POST returns a custom SSE stream (start/delta/reset/final/error).
