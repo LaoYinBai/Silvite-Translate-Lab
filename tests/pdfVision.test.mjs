@@ -55,8 +55,20 @@ test('pages are translated in order and joined with page breaks', async () => {
   assert.ok(progress.some((entry) => entry.provisionalText.includes('译1')), 'provisional text is streamed to the UI');
 });
 
-test('each page request says which page it is', async () => {
-  const contexts = [];
+// The provider choice must reach every page request, not just the first one.
+test('the selected model is forwarded to every page request', async () => {
+  const models = [];
+  await translatePdfAsImages(
+    { file: scanFile(), model: 'glm' },
+    {
+      openSource: async () => sourceWith(3),
+      translatePage: async (request) => { models.push(request.model); return okResponse('ok'); },
+    },
+  );
+  assert.deepEqual(models, ['glm', 'glm', 'glm']);
+});
+
+test('each page request says which page it is', async () => {  const contexts = [];
   await translatePdfAsImages(
     { file: scanFile(), context: '产品手册' },
     {

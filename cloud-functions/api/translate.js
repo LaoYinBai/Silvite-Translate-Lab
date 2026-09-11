@@ -49,6 +49,88 @@ const STYLE_PROMPTS = {
 
 const MIMO_API_URL = 'https://api.xiaomimimo.com/v1/chat/completions';
 
+// Provider registry. Selecting a provider changes only the upstream endpoint,
+// credentials, model id and request shape. The Silvite SSE contract, retry
+// policy, JSON validation, prompt composition and completion budget policy are
+// shared, so a request to either provider behaves identically to the client.
+// Default stays MiMo: a request without `model` follows exactly the previous path.
+export const DEFAULT_PROVIDER_ID = 'mimo';
+
+const PROVIDER_DEFINITIONS = {
+  mimo: {
+    id: 'mimo',
+    label: 'MiMo V2.5',
+    url: MIMO_API_URL,
+    apiKeyEnv: 'MIMO_API_KEY',
+    defaultModel: 'mimo-v2.5',
+    // MiMo needs thinking disabled so temperature is honoured; other providers
+    // may not accept the parameter at all.
+    thinkingDisabled: true,
+    // OpenAI-compatible name; MiMo accepts [1, 131072].
+    budgetParam: 'max_completion_tokens',
+    maxCompletionTokens: 65536,
+  },
+  glm: {
+    id: 'glm',
+    label: 'GLM-4.6V-Flash',
+    url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+    apiKeyEnv: 'GLM_API_KEY',
+    defaultModel: 'glm-4.6v-flash',
+    thinkingDisabled: false,
+    // Zhipu's OpenAI-compatible endpoint documents max_tokens. Not yet verified
+    // against a live key: if the first real call returns 400, this is the one
+    // line to change (or override with GLM_BUDGET_PARAM).
+    budgetParam: 'max_tokens',
+    maxCompletionTokens: 32768,
+  },
+};
+
+export function normalizeProviderId(value) {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(PROVIDER_DEFINITIONS, value)
+    ? value
+    : DEFAULT_PROVIDER_ID;
+}
+
+// Every provider value is overridable from the environment so a deployment can
+// be repointed (endpoint, model, output ceiling, budget parameter) without a
+// code change.
+export function resolveProvider(providerId, env = {}) {
+  const definition = PROVIDER_DEFINITIONS[normalizeProviderId(providerId)];
+  const prefix = definition.apiKeyEnv.replace(/_API_KEY$/, '');
+  const ceiling = Number.parseInt(env[`${prefix}_MAX_COMPLETION_TOKENS`] || '', 10);
+  return {
+    ...definition,
+    apiKey: env[definition.apiKeyEnv],
+    url: env[`${prefix}_BASE_URL`] || definition.url,
+    model: env[`${prefix}_MODEL`] || definition.defaultModel,
+    budgetParam: env[`${prefix}_BUDGET_PARAM`] || definition.budgetParam,
+    maxCompletionTokens: Number.isFinite(ceiling) && ceiling > 0 ? ceiling : definition.maxCompletionTokens,
+  };
+}
+
+export function listProviders() {
+  return Object.values(PROVIDER_DEFINITIONS).map(({ id, label, defaultModel }) => ({ id, label, model: defaultModel }));
+}
+
+export function buildProviderRequest(provider, { messages, budget }) {
+  const body = {
+    model: provider.model,
+    messages,
+    [provider.budgetParam]: Math.min(budget, provider.maxCompletionTokens),
+    temperature: 0.3,
+    stream: true,
+  };
+  if (provider.thinkingDisabled) body.thinking = { type: 'disabled' };
+  return {
+    url: provider.url,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${provider.apiKey}`,
+    },
+    body,
+  };
+}
+
 // Dedicated user instruction for comic images. Plain image requests keep the
 // generic instruction below; comics get the visual-narrative framing.
 const COMIC_IMAGE_INSTRUCTION = [
@@ -911,13 +993,6 @@ export async function onRequest(context) {
     });
   }
 
-  // The MiMo key comes exclusively from the EdgeOne environment variable
-  // MIMO_API_KEY; it never ships in source code or the frontend bundle.
-  const apiKey = env.MIMO_API_KEY;
-  if (!apiKey) {
-    return new Response(JSON.stringify({ error: 'API key not configured' }), { status: 500, headers });
-  }
-
   let body;
   try {
     body = await request.json();
@@ -925,7 +1000,22 @@ export async function onRequest(context) {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { status: 400, headers });
   }
 
-  const { text, mode, context: userContext, terminology, preserveNames, explainTranslation, imageDataUrl } = body || {};
+  const {
+    text, mode, context: userContext, terminology, preserveNames, explainTranslation, imageDataUrl,
+    model: requestedModel,
+  } = body || {};
+
+  // Provider keys come exclusively from the EdgeOne environment variables
+  // (MIMO_API_KEY / GLM_API_KEY); they never ship in source code or the
+  // frontend bundle. An unknown provider id falls back to the default one.
+  const provider = resolveProvider(requestedModel, env);
+  if (!provider.apiKey) {
+    console.error(`Provider "${provider.id}" is not configured: missing ${provider.apiKeyEnv}`);
+    return new Response(
+      JSON.stringify({ error: `API key not configured for provider ${provider.id}` }),
+      { status: 500, headers },
+    );
+  }
 
   if (!text && !imageDataUrl) {
     return new Response(JSON.stringify({ error: 'Text or image is required' }), { status: 400, headers });
@@ -999,29 +1089,17 @@ export async function onRequest(context) {
           };
 
           for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-            const mimoResponse = await fetch(MIMO_API_URL, {
+            const providerRequest = buildProviderRequest(provider, { messages, budget });
+            const mimoResponse = await fetch(providerRequest.url, {
               method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${apiKey}`,
-              },
-              body: JSON.stringify({
-                model: 'mimo-v2.5',
-                messages,
-                // Translation needs no chain-of-thought; disabling thinking
-                // also restores real control over temperature (thinking mode
-                // forces temperature 1.0).
-                thinking: { type: 'disabled' },
-                max_completion_tokens: budget,
-                temperature: 0.3,
-                stream: true,
-              }),
+              headers: providerRequest.headers,
+              body: JSON.stringify(providerRequest.body),
             });
 
             if (!mimoResponse.ok) {
               // Provider detail stays in the server log only.
               const errorText = await mimoResponse.text();
-              console.error('MiMo API error:', errorText);
+              console.error(`Provider "${provider.id}" error:`, errorText);
               throw { code: 'MODEL_UPSTREAM_ERROR' };
             }
 
