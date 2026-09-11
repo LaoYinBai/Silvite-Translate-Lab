@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { translateStream as apiTranslateStream, checkHealth, DEFAULT_TRANSLATION_MODEL, type TranslationModelId, type TranslationResponse } from '../api/client';
+import { translateStream as apiTranslateStream, checkHealth, type TranslationResponse } from '../api/client';
 import { DEMO_SAMPLES } from '../demo/samples';
 import { translateDocument, type DocumentProgressStatus } from '../services/document/translateDocument';
 import { translatePdfAsImages, type PdfVisionStatus } from '../services/document/pdfVision';
@@ -89,9 +89,6 @@ interface TranslationState {
   
   // Settings
   mode: TranslationMode;
-  // Upstream provider for the next request; the server maps it to an endpoint
-  // and credentials. Default keeps the original provider.
-  model: TranslationModelId;
   context: string;
   terminology: string;
   preserveNames: boolean;
@@ -128,7 +125,6 @@ interface TranslationState {
   openPreview: (src: string, alt: string) => void;
   closePreview: () => void;
   setMode: (mode: TranslationMode) => void;
-  setModel: (model: TranslationModelId) => void;
   setContext: (context: string) => void;
   setTerminology: (terminology: string) => void;
   setPreserveNames: (preserve: boolean) => void;
@@ -204,7 +200,6 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   previewImage: null,
   
   mode: 'auto',
-  model: DEFAULT_TRANSLATION_MODEL,
   context: '',
   terminology: '',
   preserveNames: true,
@@ -259,7 +254,6 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   openPreview: (src, alt) => set({ previewImage: { src, alt } }),
   closePreview: () => set({ previewImage: null }),
   setMode: (mode) => set({ mode }),
-  setModel: (model) => set({ model }),
   setContext: (context) => set({ context }),
   setTerminology: (terminology) => set({ terminology }),
   setPreserveNames: (preserve) => set({ preserveNames: preserve }),
@@ -391,7 +385,6 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
             text: state.inputText || undefined,
             imageDataUrl: state.inputImage || undefined,
             mode: state.mode,
-            model: state.model,
             context: state.context || undefined,
             terminology: state.terminology || undefined,
             preserveNames: state.preserveNames,
@@ -400,7 +393,6 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
         : await translateDocument({
             text: documentText,
             mode: state.mode,
-            model: state.model,
             context: state.context || undefined,
             terminology: state.terminology || undefined,
             preserveNames: state.preserveNames,
@@ -473,7 +465,6 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       const response = await translatePdfAsImages({
         file,
         mode: state.mode,
-        model: state.model,
         context: state.context || undefined,
         terminology: state.terminology || undefined,
         preserveNames: state.preserveNames,
@@ -531,7 +522,6 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       fileErrorCode: null,
       documentSourceFile: null,
       mode: 'auto',
-      model: DEFAULT_TRANSLATION_MODEL,
       context: '',
       terminology: '',
       preserveNames: true,

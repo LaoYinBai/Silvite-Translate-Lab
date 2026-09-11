@@ -2587,10 +2587,15 @@ PDF 进入图片校验并被拒（「不支持的文件格式，请使用 JPG、
 
 ## 二十二、多模型 Provider 抽象（2026-09-11）
 
-高级菜单可并列选择 MiMo V2.5（默认）与 GLM-4.6V-Flash。前端只发送 provider id
-（`model` 字段），服务端 `PROVIDER_DEFINITIONS` / `resolveProvider()` 负责端点、凭据、
+服务端支持并列多 provider：`PROVIDER_DEFINITIONS` / `resolveProvider()` 负责端点、凭据、
 模型 id、请求形状与输出上限；**Silvite SSE 契约、重试预算、JSON 校验、Prompt 组装、
-完成预算策略全部共享**，两个 provider 对客户端行为一致。
+完成预算策略全部共享**，各 provider 对客户端行为一致。
+
+- **当前状态：前端不提供模型选择入口**（GLM-4.6V-Flash 实测不稳定，先撤回 UI）。
+  前端不发送 `model` 字段，服务端按 `DEFAULT_PROVIDER_ID` 使用 MiMo。客户端类型
+  `TranslationRequest.model`、服务层 `translateDocument` / `translatePdfAsImages` 的
+  `model` 参数、以及服务端 provider 注册表与 `GLM_*` 环境变量全部保留；
+  恢复入口只需在前端加回一处控件，底层无需改动。
 
 - 新增环境变量：`GLM_API_KEY`（必需）；可选覆盖 `GLM_MODEL` / `GLM_BASE_URL` /
   `GLM_MAX_COMPLETION_TOKENS` / `GLM_BUDGET_PARAM`，MiMo 同名前缀亦可覆盖。
