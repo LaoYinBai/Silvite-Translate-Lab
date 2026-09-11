@@ -1,5 +1,7 @@
 import {
   BASE_PROMPT,
+  DATA_BOUNDARY_PROMPT,
+  QUALITY_CORE_PROMPT,
   NATURAL_PROMPT,
   LITERARY_PROMPT,
   ACADEMIC_PROMPT,
@@ -9,6 +11,33 @@ import {
 } from './prompts.mjs';
 
 export const SUPPORTED_TRANSLATION_MODES = ['auto', 'natural', 'literary', 'academic', 'business', 'comic'];
+
+// The source travels as a delimited data region so the instruction/data
+// boundary is explicit in the request, not only in prose. Content is passed
+// through byte-for-byte; marker look-alikes inside it stay data, which the
+// boundary rules state explicitly.
+export const SOURCE_DATA_MARKERS = { open: '<source_data>', close: '</source_data>' };
+
+export function wrapSourceData(text) {
+  return `${SOURCE_DATA_MARKERS.open}\n${text}\n${SOURCE_DATA_MARKERS.close}`;
+}
+
+// Block-structure guard. A translation can parse cleanly and still have merged
+// source paragraphs, which silently loses structure even though no content is
+// missing. Short inputs are exempt: a two-block source may legitimately read as
+// one flowing paragraph.
+export const MIN_BLOCKS_FOR_STRUCTURE_CHECK = 3;
+
+export function countBlocks(value) {
+  if (typeof value !== 'string') return 0;
+  return value.split(/\n\s*\n/).map((block) => block.trim()).filter(Boolean).length;
+}
+
+export function hasBlockLoss(source, translation) {
+  const sourceBlocks = countBlocks(source);
+  if (sourceBlocks < MIN_BLOCKS_FOR_STRUCTURE_CHECK) return false;
+  return countBlocks(translation) < sourceBlocks;
+}
 
 const STYLE_PROMPTS = {
   natural: NATURAL_PROMPT,
@@ -268,9 +297,11 @@ export function composeTranslationPrompt(options = {}) {
     modePrompt = STYLE_PROMPTS[requestedMode];
   }
 
-  // Order mirrors the declared priority: base rules → mode style →
-  // terminology (hard constraints) → context → proper-name handling.
-  const sections = [BASE_PROMPT, modePrompt];
+  // Order mirrors the declared priority: data boundary (instruction isolation)
+  // → base rules → quality core (register, epistemic status, responsibility,
+  // terminology consistency) → mode style → terminology (hard constraints) →
+  // context → proper-name handling.
+  const sections = [DATA_BOUNDARY_PROMPT, BASE_PROMPT, QUALITY_CORE_PROMPT, modePrompt];
 
   const terminologySection = buildTerminologySection(options.terminology);
   if (terminologySection) {
@@ -920,7 +951,7 @@ export async function onRequest(context) {
         ],
       });
     } else {
-      messages.push({ role: 'user', content: text });
+      messages.push({ role: 'user', content: wrapSourceData(text) });
     }
 
     const initialBudget = getCompletionBudget({
@@ -1044,6 +1075,15 @@ export async function onRequest(context) {
 
             const parsed = parseModelContent(content, fallback, finishReason);
             if (parsed.ok) {
+              // Structure guard: parsing succeeded, but merged or dropped
+              // source blocks are still a fidelity failure. Retry once with the
+              // same budget; a second failure is accepted rather than surfaced,
+              // because the content itself is complete.
+              if (attempt < MAX_ATTEMPTS - 1 && hasBlockLoss(text, parsed.value.translation)) {
+                lastFailureCode = 'MODEL_FORMAT_FAILURE';
+                prepareRetry('format_error');
+                continue;
+              }
               send({
                 type: 'final',
                 result: buildCanonicalResult({
