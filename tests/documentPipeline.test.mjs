@@ -21,6 +21,19 @@ test('short documents use one request and return one canonical result', async ()
   assert.equal(result.translation, '[Short document.]');
 });
 
+// The provider choice must reach every chunk request; a missing field would
+// silently fall back to the default model for long documents only.
+test('the selected model is forwarded to every chunk request', async () => {
+  const models = [];
+  const source = ['First paragraph. '.repeat(8), 'Second paragraph. '.repeat(8), 'Third paragraph. '.repeat(8)].join('\n\n');
+  await translateDocument({ text: source, mode: 'natural', model: 'glm' }, {
+    targetChars: 90,
+    translateChunk: async (request) => { models.push(request.model); return resultFor(request.text); },
+  });
+  assert.ok(models.length > 1, 'the source must be split into several chunks');
+  assert.ok(models.every((value) => value === 'glm'), `every chunk must carry the model, got ${models.join()}`);
+});
+
 test('long documents preserve chunk order and assemble without duplicated markers', async () => {
   const source = ['First paragraph. '.repeat(8), 'Second paragraph. '.repeat(8), 'Third paragraph. '.repeat(8)].join('\n\n');
   const calls = [];

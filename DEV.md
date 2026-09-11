@@ -2582,3 +2582,24 @@ PDF 进入图片校验并被拒（「不支持的文件格式，请使用 JPG、
 - v1.3.0 (2026-09-09): 第十八章「翻译请求生命周期（Streaming）」——MiMo SSE 消费、自有 SSE 事件协议、截断防护与自动重试、thinking 关闭、Comic 抑制流式、竞态防护
 - v1.2.0 (2026-09-08): 新增第十章「导出 PDF / Word 功能」、图片上传交互、详细工程实现和 UI 规范
 - v1.1.0 (2026-09-08): 新增第九章「图片上传（增强）」，包括 Drag & Drop、剪贴板粘贴、图片预览等详细规范
+
+---
+
+## 二十二、多模型 Provider 抽象（2026-09-11）
+
+高级菜单可并列选择 MiMo V2.5（默认）与 GLM-4.6V-Flash。前端只发送 provider id
+（`model` 字段），服务端 `PROVIDER_DEFINITIONS` / `resolveProvider()` 负责端点、凭据、
+模型 id、请求形状与输出上限；**Silvite SSE 契约、重试预算、JSON 校验、Prompt 组装、
+完成预算策略全部共享**，两个 provider 对客户端行为一致。
+
+- 新增环境变量：`GLM_API_KEY`（必需）；可选覆盖 `GLM_MODEL` / `GLM_BASE_URL` /
+  `GLM_MAX_COMPLETION_TOKENS` / `GLM_BUDGET_PARAM`，MiMo 同名前缀亦可覆盖。
+- 未知 provider id 回落默认 provider；已选 provider 缺 key 时返回 500 并指明 provider，
+  不会发起上游请求，也不会静默改用其他 provider。
+- MiMo 仍收 `thinking:{type:"disabled"}`；GLM 不接收该参数。GLM 的输出预算参数按
+  OpenAI 兼容约定用 `max_tokens`，**尚未经真实调用验证**，首次联调若 400 只需改这一处
+  （或设 `GLM_BUDGET_PARAM`）。
+- 证据：`tests/providerSelection.test.mjs`(7) 覆盖路由/鉴权/形状/上限/回落/缺 key；
+  `tests/documentPipeline.test.mjs` 与 `tests/pdfVision.test.mjs` 各增一例断言 model 透传到
+  每个分块与每一页。真实 HTTP 复验：`model=glm` 无 key → 500 指名 provider；不传 model →
+  MiMo 正常；`model=gpt-5` → 回落 MiMo。**GLM 真实上游调用未验证（缺 key）。**

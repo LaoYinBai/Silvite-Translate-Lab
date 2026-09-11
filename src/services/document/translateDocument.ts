@@ -17,6 +17,7 @@ export interface DocumentTranslationInput {
   terminology?: string;
   preserveNames?: boolean;
   explainTranslation?: boolean;
+  model?: TranslationRequest['model'];
 }
 
 export interface DocumentTranslationDependencies {
@@ -121,6 +122,7 @@ export async function translateDocument(
       terminology: input.terminology,
       preserveNames: input.preserveNames,
       explainTranslation: input.explainTranslation,
+      model: input.model,
     };
 
     for (let localAttempt = 0; localAttempt < 2; localAttempt++) {

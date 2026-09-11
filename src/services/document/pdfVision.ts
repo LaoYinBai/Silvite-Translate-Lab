@@ -26,6 +26,7 @@ export interface PdfVisionInput {
   terminology?: string;
   preserveNames?: boolean;
   explainTranslation?: boolean;
+  model?: TranslationRequest['model'];
 }
 
 export interface PdfVisionDependencies {
@@ -102,6 +103,7 @@ export async function translatePdfAsImages(
       terminology: input.terminology,
       preserveNames: input.preserveNames,
       explainTranslation: input.explainTranslation,
+      model: input.model,
     };
 
     for (let attempt = 0; attempt < 2; attempt++) {
