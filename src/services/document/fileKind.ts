@@ -1,5 +1,5 @@
 import type { DocumentFileKind } from './fileParser';
-import { documentKindOf, documentKindOfMimeType, SUPPORTED_DOCUMENT_ACCEPT } from './fileParser';
+import { documentKindOf, documentKindOfMimeType, SUPPORTED_DOCUMENT_ACCEPT, SUPPORTED_DOCUMENT_KINDS } from './fileParser';
 import { documentKindsLabel } from './formatLabels';
 
 export type IncomingFileKind = 'image' | 'document' | 'unknown';
@@ -39,6 +39,13 @@ export function isSupportedImageFile(file: IncomingFileMeta): boolean {
 
 export function unsupportedFileMessage(kinds: DocumentFileKind[]): string {
   return `不支持的文件格式，请使用 ${documentKindsLabel(kinds)} 文件或 ${SUPPORTED_IMAGE_LABEL} 图片`;
+}
+
+// One-line summary of everything the app can really open. Derived from the
+// parser registry so the hint and the picker tooltip cannot advertise a format
+// that has no working parser.
+export function supportedInputSummary(): string {
+  return `${documentKindsLabel(SUPPORTED_DOCUMENT_KINDS)} 与 ${SUPPORTED_IMAGE_LABEL} 图片`;
 }
 
 /**
