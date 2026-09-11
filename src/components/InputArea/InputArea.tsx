@@ -4,12 +4,15 @@ import {
   parseDocumentFile,
   DocumentFileError,
   isVisionRecoverablePdfError,
+  MAX_DOCUMENT_FILE_SIZE,
+  MAX_OFFICE_FILE_SIZE,
   SUPPORTED_DOCUMENT_KINDS,
 } from '../../services/document/fileParser';
 import { MAX_VISION_PAGES } from '../../services/document/pdfVision';
 import {
   classifyIncomingFile,
   isSupportedImageFile,
+  supportedInputSummary,
   unsupportedFileMessage,
   SUPPORTED_IMAGE_LABEL,
   SUPPORTED_INPUT_ACCEPT,
@@ -17,6 +20,9 @@ import {
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
 const UNSUPPORTED_FILE_MESSAGE = unsupportedFileMessage(SUPPORTED_DOCUMENT_KINDS);
+// Derived from the parser registry: the visible hint and the picker tooltip can
+// never advertise a format without a working parser.
+const INPUT_FORMAT_SUMMARY = supportedInputSummary();
 
 // Non-blocking feedback for the shared drop zone / file pickers.
 interface AttachmentMessage {
@@ -99,7 +105,7 @@ function ChooseFileButton({ onClick, disabled, className = '' }: {
       type="button"
       onClick={onClick}
       disabled={disabled}
-      title="选择本地文件"
+      title={`选择本地文件 · 支持 ${INPUT_FORMAT_SUMMARY}`}
       className={`flex items-center gap-1.5 px-3 text-[13px] rounded-lg transition-colors text-[#666666] hover:text-[#1a1a1a] hover:bg-[#f5f5f5] disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
     >
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -662,6 +668,15 @@ export function InputArea() {
           </div>
         )}
       </div>
+
+      {/* Supported-format summary. States what the app can open without
+          instructing the user; details stay in the tooltip. */}
+      <p
+        className="mt-2 px-1 text-[12px] leading-[1.6] text-[#b0b0b0]"
+        title={`Office 文件最大 ${Math.round(MAX_OFFICE_FILE_SIZE / (1024 * 1024))}MB，其他文档最大 ${Math.round(MAX_DOCUMENT_FILE_SIZE / (1024 * 1024))}MB，图片最大 10MB；提取正文最多 100,000 字符`}
+      >
+        支持 {INPUT_FORMAT_SUMMARY}
+      </p>
       
       {/* Drag overlay */}
       {isDragOver && (

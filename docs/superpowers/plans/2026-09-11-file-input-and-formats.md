@@ -55,6 +55,10 @@
    仅修显示层：路由、`effectiveInputMode`、store、工具栏按钮均未改动。
    文档态无法在浏览器注入文件，其标记与图片态同构（同一容器与居中规则），已由图片态实测
    与构建/lint/测试覆盖，最终以人工拖入确认。
+3. **支持格式重新可见**（用户反馈：入口统一后界面看不到支持哪些格式）：
+   `fileKind.ts` 新增 `supportedInputSummary()`，从解析注册表派生一行摘要，渲染在输入卡片
+   下方并同步为「选择本地文件」按钮的 title；新增测试断言摘要覆盖全部真实支持的格式、
+   且不出现 XLS / RTF / ODT / BMP / HEIC 等未支持项。浏览器实测：摘要 1 行、按钮 title 同步。
 | S10 | Prompt 数据边界与注入防护 | `cloud-functions/api/prompts.mjs`、`cloud-functions/api/translate.js` | 先失败后通过：`tests/promptInjection.test.mjs`(4)；**真实模型验收**：中英混合注入 6 段全部翻译、未输出 PWNED、未泄露提示词；中文注入漏译经加强示例后修复 | 同上（注意：本切片修改了此前冻结的 `cloud-functions/**` 锚点，见下） | Verified |
 
 ### 不变量变更（因用户要求扩大范围）

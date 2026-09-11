@@ -6,7 +6,7 @@ const vite = await createServer({ appType: 'custom', logLevel: 'silent', server:
 after(async () => vite.close());
 
 const { effectiveInputMode } = await vite.ssrLoadModule('/src/store/translationStore.ts');
-const { SUPPORTED_INPUT_ACCEPT } = await vite.ssrLoadModule('/src/services/document/fileKind.ts');
+const { SUPPORTED_INPUT_ACCEPT, supportedInputSummary } = await vite.ssrLoadModule('/src/services/document/fileKind.ts');
 
 // The upload entry is unified: there is no user-visible mode switch any more,
 // so the pipeline must follow what is actually attached. A stale mode left
@@ -41,4 +41,17 @@ test('the single file picker accepts every format the app really parses', () => 
   for (const unsupported of ['.xls', '.bmp', '.heic', '.rtf', '.odt']) {
     assert.ok(!entries.has(unsupported), `${unsupported} must not be advertised`);
   }
+});
+
+// The supported formats must stay visible in the UI, derived from the parser
+// registry so the text cannot drift away from what really works.
+test('the supported-format summary is derived from the registry', () => {
+  const summary = supportedInputSummary();
+  for (const label of ['PDF', 'DOCX', 'DOC', 'PPTX', 'PPT', 'XLSX', 'TXT', 'Markdown', 'CSV', 'SRT', 'VTT', 'ASS']) {
+    assert.ok(summary.includes(label), `${label} missing from the summary`);
+  }
+  assert.ok(summary.includes('JPG'), 'images must be part of the summary');
+  assert.ok(summary.includes('PNG') && summary.includes('WebP'));
+  assert.ok(!summary.includes('XLS ') && !summary.includes('XLS、'), 'legacy XLS must not be advertised');
+  assert.ok(!/RTF|ODT|BMP|HEIC/i.test(summary), 'unsupported formats must not be advertised');
 });
