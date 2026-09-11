@@ -1,15 +1,9 @@
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
-// Wire values for the upstream provider. The server maps each id to an endpoint,
-// credentials and request shape; unknown ids fall back to the default server side.
+// Wire value for the upstream provider. The server maps each id to an endpoint,
+// credentials and request shape; unknown ids fall back to the default server
+// side. Kept as the extension seam for a future selector.
 export type TranslationModelId = 'mimo' | 'glm';
-
-export const TRANSLATION_MODELS: Array<{ id: TranslationModelId; label: string }> = [
-  { id: 'mimo', label: 'MiMo V2.5' },
-  { id: 'glm', label: 'GLM-4.6V-Flash' },
-];
-
-export const DEFAULT_TRANSLATION_MODEL: TranslationModelId = 'mimo';
 
 export interface TranslationRequest {
   text?: string;

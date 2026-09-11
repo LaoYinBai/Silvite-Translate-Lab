@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslationStore, type TranslationMode } from '../../store/translationStore';
-import { TRANSLATION_MODELS } from '../../api/client';
 import {
   parseDocumentFile,
   DocumentFileError,
@@ -233,8 +232,6 @@ export function InputArea() {
     setTerminology,
     preserveNames,
     setPreserveNames,
-    model,
-    setModel,
     isLoading 
   } = useTranslationStore();
   
@@ -629,23 +626,6 @@ export function InputArea() {
         {/* Advanced panel: context & terminology constraints */}
         {showAdvanced && (
           <div className="px-4 pb-4 md:px-5 border-t border-[#f0f0f0] pt-4 bg-[#fafafa] rounded-b-xl">
-            {/* Model switcher: parallel providers, same pipeline and prompt. */}
-            <div className="mb-4">
-              <span className="mb-1.5 block text-[12px] font-medium text-[#555555]">模型 / Model</span>
-              <div className="segmented-control" role="group" aria-label="翻译模型">
-                {TRANSLATION_MODELS.map((option) => (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => setModel(option.id)}
-                    aria-pressed={model === option.id}
-                    className={`segmented-control-item ${model === option.id ? 'active' : ''}`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="context-input" className="block text-[12px] font-medium text-[#555555] mb-1.5">
