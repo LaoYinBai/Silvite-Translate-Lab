@@ -1,9 +1,28 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslationStore, type TranslationMode } from '../../store/translationStore';
-import { parseDocumentFile } from '../../services/document/fileParser';
+import {
+  parseDocumentFile,
+  DocumentFileError,
+  isVisionRecoverablePdfError,
+  SUPPORTED_DOCUMENT_KINDS,
+} from '../../services/document/fileParser';
+import { MAX_VISION_PAGES } from '../../services/document/pdfVision';
+import {
+  classifyIncomingFile,
+  isSupportedImageFile,
+  unsupportedFileMessage,
+  SUPPORTED_IMAGE_LABEL,
+  SUPPORTED_INPUT_ACCEPT,
+} from '../../services/document/fileKind';
 
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
-const MAX_SIZE = 10 * 1024 * 1024;
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+const UNSUPPORTED_FILE_MESSAGE = unsupportedFileMessage(SUPPORTED_DOCUMENT_KINDS);
+
+// Non-blocking feedback for the shared drop zone / file pickers.
+interface AttachmentMessage {
+  tone: 'error' | 'info';
+  text: string;
+}
 // EdgeOne edge functions accept request bodies up to ~1MB. Keep the
 // serialized data URL safely below that; larger images are re-encoded.
 const MAX_DATA_URL_LENGTH = 700_000;
@@ -67,30 +86,27 @@ const MODE_OPTIONS: Array<{ value: TranslationMode; label: string }> = [
 // toolbars keep their own container layout but render these same components;
 // only size/width classes differ via the className prop.
 
-function InputTypeToggle() {
-  const { inputMode, setInputMode } = useTranslationStore();
+// The only upload affordance: a secondary button that wakes the browser's own
+// file picker. Everything else is drag, paste, or nothing at all — there are no
+// per-format entries and no mode switch to explain to the user.
+function ChooseFileButton({ onClick, disabled, className = '' }: {
+  onClick: () => void;
+  disabled: boolean;
+  className?: string;
+}) {
   return (
-    <div className="segmented-control">
-      <button
-        onClick={() => setInputMode('text')}
-        className={`segmented-control-item ${inputMode === 'text' ? 'active' : ''}`}
-      >
-        文本
-      </button>
-      <button
-        onClick={() => setInputMode('image')}
-        className={`segmented-control-item ${inputMode === 'image' ? 'active' : ''}`}
-      >
-        图片
-      </button>
-      <button
-        type="button"
-        onClick={() => setInputMode('file')}
-        className={`segmented-control-item ${inputMode === 'file' ? 'active' : ''}`}
-      >
-        文件
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title="选择本地文件"
+      className={`flex items-center gap-1.5 px-3 text-[13px] rounded-lg transition-colors text-[#666666] hover:text-[#1a1a1a] hover:bg-[#f5f5f5] disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+    >
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M10.5 4.5L5.8 9.2a2.05 2.05 0 002.9 2.9l4.4-4.4a3.4 3.4 0 10-4.8-4.8L3.6 7.5a4.75 4.75 0 006.7 6.7l3.9-3.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+      选择本地文件
+    </button>
   );
 }
 
@@ -156,13 +172,11 @@ function ClearButton({ inputText, inputImage, hasDocument, onClear, className }:
 }
 
 function TranslateButton({ className = '' }: { className?: string }) {
-  const { inputText, inputImage, inputMode, documentFile, isLoading } = useTranslationStore();
+  const { inputText, inputImage, documentFile, isLoading } = useTranslationStore();
   const overLimit = inputText.length > MAX_INPUT_CHARS;
-  const hasInput = inputMode === 'file'
-    ? Boolean(documentFile)
-    : inputMode === 'image'
-      ? Boolean(inputImage)
-      : Boolean(inputText.trim()) && !overLimit;
+  const hasInput = Boolean(documentFile)
+    || Boolean(inputImage)
+    || (Boolean(inputText.trim()) && !overLimit);
   return (
     <button
       onClick={() => useTranslationStore.getState().translate()}
@@ -195,14 +209,16 @@ export function InputArea() {
     setInputText, 
     inputImage, 
     setInputImage, 
-    inputMode, 
-    setInputMode,
     imageSource,
     documentFile,
     fileStatus,
     fileError,
+    fileErrorCode,
+    documentSourceFile,
     setDocumentFile,
+    setDocumentSourceFile,
     setFileStatus,
+    translateScannedPdf,
     openPreview,
     context,
     setContext,
@@ -215,41 +231,71 @@ export function InputArea() {
   
   const [isDragOver, setIsDragOver] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [imageError, setImageError] = useState<string | null>(null);
+  const [attachmentMessage, setAttachmentMessage] = useState<AttachmentMessage | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const documentInputRef = useRef<HTMLInputElement>(null);
   
+  // One attachment at a time: an incoming file replaces whatever was attached,
+  // which keeps the pipeline decision unambiguous and matches chat-style input.
+  const dropAttachment = useCallback(() => {
+    setInputImage(null);
+    setDocumentFile(null);
+    setDocumentSourceFile(null);
+    setFileStatus('idle');
+  }, [setDocumentFile, setDocumentSourceFile, setFileStatus, setInputImage]);
+
   const processFile = useCallback(async (file: File) => {
-    setImageError(null);
-    if (!ALLOWED_TYPES.includes(file.type)) {
-      setImageError('不支持的文件格式，请使用 JPG、PNG 或 WebP 图片');
+    setAttachmentMessage(null);
+    if (!isSupportedImageFile(file)) {
+      setAttachmentMessage({ tone: 'error', text: `不支持的文件格式，请使用 ${SUPPORTED_IMAGE_LABEL} 图片` });
       return;
     }
-    if (file.size > MAX_SIZE) {
-      setImageError('图片过大，最大支持 10MB');
+    if (file.size > MAX_IMAGE_SIZE) {
+      setAttachmentMessage({ tone: 'error', text: '图片过大，最大支持 10MB' });
       return;
     }
     
     try {
       const base64 = await compressToDataUrl(file);
+      dropAttachment();
       setInputImage(base64);
-      setInputMode('image');
     } catch (err) {
-      setImageError(err instanceof Error ? err.message : '图片处理失败');
+      setAttachmentMessage({ tone: 'error', text: err instanceof Error ? err.message : '图片处理失败' });
     }
-  }, [setInputImage, setInputMode]);
+  }, [dropAttachment, setInputImage]);
 
   const processDocument = useCallback(async (file: File) => {
+    dropAttachment();
+    // Kept so a PDF without a usable text layer can still be translated by
+    // rendering its pages as images.
+    setDocumentSourceFile(file);
     setFileStatus('parsing');
     try {
       const parsed = await parseDocumentFile(file);
       setDocumentFile(parsed);
-      setInputMode('file');
     } catch (error) {
       setDocumentFile(null);
-      setFileStatus('error', error instanceof Error ? error.message : '文件解析失败');
+      setFileStatus(
+        'error',
+        error instanceof Error ? error.message : '文件解析失败',
+        error instanceof DocumentFileError ? error.code : null,
+      );
     }
-  }, [setDocumentFile, setFileStatus, setInputMode]);
+  }, [dropAttachment, setDocumentFile, setDocumentSourceFile, setFileStatus]);
+
+  // Single entry point for every incoming file (drop, paste, file picker). The
+  // file's own type decides the pipeline.
+  const handleIncomingFile = useCallback((file: File) => {
+    const kind = classifyIncomingFile(file);
+    if (kind === 'document') {
+      void processDocument(file);
+      return;
+    }
+    if (kind === 'image') {
+      void processFile(file);
+      return;
+    }
+    setAttachmentMessage({ tone: 'error', text: UNSUPPORTED_FILE_MESSAGE });
+  }, [processDocument, processFile]);
   
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -277,24 +323,21 @@ export function InputArea() {
     setIsDragOver(false);
     
     const files = e.dataTransfer.files;
-    if (files.length > 0) {
-      if (inputMode === 'file') processDocument(files[0]);
-      else processFile(files[0]);
+    if (!files.length) return;
+    handleIncomingFile(files[0]);
+    if (files.length > 1) {
+      setAttachmentMessage({
+        tone: 'info',
+        text: `一次只能处理一个文件，已使用「${files[0].name}」`,
+      });
     }
-  }, [inputMode, processDocument, processFile]);
+  }, [handleIncomingFile]);
   
-  const handleImageSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files && files.length > 0) {
-      processFile(files[0]);
-    }
-  }, [processFile]);
-
-  const handleDocumentSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) void processDocument(file);
+    if (files && files.length > 0) handleIncomingFile(files[0]);
     e.target.value = '';
-  }, [processDocument]);
+  }, [handleIncomingFile]);
   
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
@@ -302,42 +345,28 @@ export function InputArea() {
       if (!items) return;
       
       for (const item of items) {
-        if (item.type.startsWith('image/')) {
-          const file = item.getAsFile();
-          if (file) {
-            e.preventDefault();
-            processFile(file);
-            break;
-          }
-        }
+        if (item.kind !== 'file') continue;
+        const file = item.getAsFile();
+        if (!file) continue;
+        e.preventDefault();
+        handleIncomingFile(file);
+        break;
       }
     };
     
     document.addEventListener('paste', handlePaste);
     return () => document.removeEventListener('paste', handlePaste);
-  }, [processFile]);
+  }, [handleIncomingFile]);
   
-  // Removes the current user image but stays in image mode; the panel then
-  // shows the add-image dropzone again. Demo images never get this button.
-  const clearImage = useCallback(() => {
-    setInputImage(null);
-  }, [setInputImage]);
-
-  const handleReplaceImage = useCallback(() => {
+  const handleChooseFile = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
 
-  const handleChooseDocument = useCallback(() => {
-    documentInputRef.current?.click();
-  }, []);
-  
   const handleTranslate = useCallback(() => {
     if (inputText.length > MAX_INPUT_CHARS) return;
-    if (inputMode === 'file' && !documentFile) return;
-    if (inputMode === 'image' && !inputImage) return;
-    if (inputMode === 'text' && !inputText.trim()) return;
+    if (!documentFile && !inputImage && !inputText.trim()) return;
     useTranslationStore.getState().translate();
-  }, [documentFile, inputMode, inputText, inputImage]);
+  }, [documentFile, inputImage, inputText]);
   
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -350,7 +379,14 @@ export function InputArea() {
     setInputText('');
     setInputImage(null);
     setDocumentFile(null);
-  }, [setDocumentFile, setInputText, setInputImage]);
+    setDocumentSourceFile(null);
+    setFileStatus('idle');
+    setAttachmentMessage(null);
+  }, [setDocumentFile, setDocumentSourceFile, setFileStatus, setInputText, setInputImage]);
+
+  // Offered only for the "no usable text layer" failures, and only while the
+  // original file is still attached.
+  const visionRouteAvailable = Boolean(documentSourceFile) && isVisionRecoverablePdfError(fileErrorCode);
 
   const formatFileSize = (size: number) => size >= 1024 * 1024
     ? `${(size / 1024 / 1024).toFixed(1)} MB`
@@ -370,123 +406,114 @@ export function InputArea() {
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       >
-        {/* Image mode: fully replaces the text panel. The textarea is never
-            rendered here. Demo images show preview only (no remove/replace). */}
-        {inputMode === 'image' && !inputImage && (
+        {/* Attachment display. Layout restored to the pre-refactor panel: the
+            attachment is centred in a fixed-height area so the input card keeps
+            its proportions. Only the presentation lives here — routing, state
+            and the toolbar button are unchanged. */}
+        {(inputImage || documentFile || fileStatus === 'parsing') && (
           <div className="p-4 md:p-6">
-            <button
-              type="button"
-              onClick={handleReplaceImage}
-              className="w-full min-h-[180px] md:min-h-[220px] rounded-xl border-2 border-dashed border-[#d9d9d9] hover:border-[#1677ff] hover:bg-[#f7fbff] transition-colors flex flex-col items-center justify-center gap-2 text-center cursor-pointer"
-            >
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                <rect x="3" y="5" width="18" height="14" rx="2" stroke="#b0b0b0" strokeWidth="1.6"/>
-                <circle cx="9" cy="10" r="1.6" stroke="#b0b0b0" strokeWidth="1.6"/>
-                <path d="M3.5 16.5l4.5-4 3 2.5 4-3.5 5.5 5" stroke="#b0b0b0" strokeWidth="1.6" strokeLinejoin="round"/>
-              </svg>
-              <span className="text-[15px] font-medium text-[#555555]">
-                <span className="hidden md:inline">拖入图片，或点击选择</span>
-                <span className="md:hidden">添加图片</span>
-              </span>
-              <span className="text-[12px] text-[#999999]">JPG / PNG / WebP · 最大 10MB</span>
-            </button>
-          </div>
-        )}
-
-        {inputMode === 'image' && inputImage && (
-          <div className="p-4 md:p-6">
-            <div className="flex flex-col items-center gap-3">
-              <button
-                type="button"
-                onClick={() => openPreview(inputImage, imageSource === 'demo' ? '演示样本图片' : '已上传图片')}
-                title="点击查看大图"
-                className="group relative rounded-lg overflow-hidden border border-[#e0e0e0] hover:border-[#1677ff] transition-colors cursor-zoom-in"
-              >
-                <img
-                  src={inputImage}
-                  alt={imageSource === 'demo' ? '演示样本图片' : '已上传图片'}
-                  className="max-h-[300px] md:max-h-[360px] max-w-full w-auto object-contain"
-                  draggable={false}
-                />
-                <span className="absolute bottom-2 right-2 flex items-center gap-1 px-2 py-1 rounded-md bg-black/55 text-white text-[11px] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                  <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.5"/>
-                    <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                    <path d="M7 5v4M5 7h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            {fileStatus === 'parsing' ? (
+              <div className="flex min-h-[180px] items-center justify-center md:min-h-[220px]">
+                <span className="flex items-center gap-2 text-[15px] text-[#666666]">
+                  <svg className="h-5 w-5 animate-spin text-[#1677ff]" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 0 5.373 0 12h4z"/>
                   </svg>
-                  查看大图
+                  正在解析文件…
                 </span>
-              </button>
+              </div>
+            ) : inputImage ? (
+              <div className="flex min-h-[180px] flex-col items-center justify-center gap-3 md:min-h-[220px]">
+                <button
+                  type="button"
+                  onClick={() => openPreview(inputImage, imageSource === 'demo' ? '演示样本图片' : '已上传图片')}
+                  title="点击查看大图"
+                  className="group relative overflow-hidden rounded-lg border border-[#e0e0e0] transition-colors hover:border-[#1677ff] cursor-zoom-in"
+                >
+                  <img
+                    src={inputImage}
+                    alt={imageSource === 'demo' ? '演示样本图片' : '已上传图片'}
+                    className="max-h-[300px] w-auto max-w-full object-contain md:max-h-[360px]"
+                    draggable={false}
+                  />
+                  <span className="pointer-events-none absolute bottom-2 right-2 flex items-center gap-1 rounded-md bg-black/55 px-2 py-1 text-[11px] text-white opacity-0 transition-opacity group-hover:opacity-100">
+                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.5"/>
+                      <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                      <path d="M7 5v4M5 7h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    </svg>
+                    查看大图
+                  </span>
+                </button>
 
-              {imageSource === 'demo' ? (
-                <p className="text-[12px] text-[#999999]">演示样本图片 · 点击图片可放大预览</p>
-              ) : (
-                <div className="flex items-center gap-3">
-                  <button type="button" onClick={handleReplaceImage} className="btn btn-secondary h-[36px]">
-                    更换图片
-                  </button>
-                  <button type="button" onClick={clearImage} className="btn btn-ghost h-[36px]">
-                    删除
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
-        {inputMode === 'file' && (
-          <div className="p-4 md:p-6">
-            {!documentFile ? (
-              <button
-                type="button"
-                onClick={handleChooseDocument}
-                disabled={fileStatus === 'parsing' || isLoading}
-                className="w-full min-h-[180px] md:min-h-[220px] rounded-xl border-2 border-dashed border-[#d9d9d9] hover:border-[#1677ff] hover:bg-[#f7fbff] transition-colors flex flex-col items-center justify-center gap-2 text-center disabled:cursor-wait disabled:opacity-70"
-              >
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M7 3h7l4 4v14H7a2 2 0 01-2-2V5a2 2 0 012-2z" stroke="#b0b0b0" strokeWidth="1.6"/>
-                  <path d="M14 3v5h5M9 13h6M9 17h5" stroke="#b0b0b0" strokeWidth="1.6" strokeLinecap="round"/>
-                </svg>
-                <span className="text-[15px] font-medium text-[#555555]">
-                  {fileStatus === 'parsing' ? '正在解析文件…' : '拖入文件，或点击选择'}
-                </span>
-                <span className="text-[12px] text-[#999999]">PDF / DOCX / TXT / MD · 最大 10MB</span>
-              </button>
-            ) : (
-              <div className="min-h-[180px] md:min-h-[220px] flex items-center justify-center">
+                {imageSource === 'demo' ? (
+                  <p className="text-[12px] text-[#999999]">演示样本图片 · 点击图片可放大预览</p>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <button type="button" onClick={handleChooseFile} disabled={isLoading} className="btn btn-secondary h-[36px]">
+                      更换图片
+                    </button>
+                    <button type="button" onClick={dropAttachment} disabled={isLoading} className="btn btn-ghost h-[36px]">
+                      删除
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : documentFile ? (
+              <div className="flex min-h-[180px] items-center justify-center md:min-h-[220px]">
                 <div className="w-full max-w-[560px] rounded-lg border border-[#e0e0e0] bg-[#fafafa] p-4 md:p-5">
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-white border border-[#e0e0e0] flex items-center justify-center text-[12px] font-semibold text-[#1677ff] uppercase">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-[#e0e0e0] bg-white text-[12px] font-semibold uppercase text-[#1677ff]">
                       {documentFile.kind}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[15px] font-medium text-[#1a1a1a] truncate">{documentFile.name}</p>
+                      <p className="truncate text-[15px] font-medium text-[#1a1a1a]">{documentFile.name}</p>
                       <p className="mt-1 text-[12px] text-[#888888]">
                         {documentFile.kind.toUpperCase()} · {formatFileSize(documentFile.size)} · 已提取 {documentFile.characterCount.toLocaleString()} 个字符
                       </p>
-                      <p className="mt-2 text-[12px] text-[#52a246]">文件解析完成，可以开始翻译</p>
                     </div>
                   </div>
                   <div className="mt-4 flex gap-2">
-                    <button type="button" onClick={handleChooseDocument} disabled={isLoading} className="btn btn-secondary h-[36px]">更换文件</button>
-                    <button type="button" onClick={() => setDocumentFile(null)} disabled={isLoading} className="btn btn-ghost h-[36px]">删除</button>
+                    <button type="button" onClick={handleChooseFile} disabled={isLoading} className="btn btn-secondary h-[36px]">更换文件</button>
+                    <button type="button" onClick={dropAttachment} disabled={isLoading} className="btn btn-ghost h-[36px]">删除</button>
                   </div>
                 </div>
               </div>
-            )}
-            {fileError && <p className="mt-3 text-[13px] text-[#ff4d4f]">{fileError}</p>}
+            ) : null}
           </div>
         )}
 
-        {/* Text mode: the classic textarea panel. Mutually exclusive with the
-            image panels above. */}
-        {inputMode === 'text' && (
+        {fileError && (
+          <div className="px-4 pt-3 md:px-6">
+            <p className="text-[13px] text-[#ff4d4f]">{fileError}</p>
+            {visionRouteAvailable && (
+              <div className="mt-3 rounded-lg border border-[#e0e0e0] bg-[#fafafa] px-3 py-3">
+                <p className="text-[12px] leading-[1.7] text-[#666666]">
+                  也可以改用视觉翻译：把每一页渲染成图片逐页识别，最多 {MAX_VISION_PAGES} 页，
+                  不需要文字层。页面图片会按现有的图片翻译链路发送。
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void translateScannedPdf()}
+                  disabled={isLoading}
+                  className="btn btn-secondary h-[36px] mt-2"
+                >
+                  {isLoading ? '正在逐页翻译…' : '改用视觉翻译（逐页识别）'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* With an attachment the input box shows that attachment only — the
+            same rule as the previous image/file panels: no textarea, no hints. */}
+        {!documentFile && !inputImage && (
           <div className="p-4 pb-4 md:p-6 md:pb-4">
             <textarea
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="输入任意语言的文本。中文译为英文，其他语言自动译入中文..."
+              placeholder="输入任意语言的文本，或直接拖入图片 / PDF / Word / PPT / Excel / 字幕文件…"
               disabled={isLoading}
               rows={5}
               className="w-full resize-none border-none outline-none text-[17px] leading-[1.8] text-[#1a1a1a] placeholder:text-[#b0b0b0] bg-transparent min-h-[140px] md:min-h-[180px]"
@@ -505,21 +532,16 @@ export function InputArea() {
           </div>
         )}
         
-        {/* Hidden file input shared by both layouts */}
+        {/* Single hidden picker for every supported format; the routing decision
+            belongs to handleIncomingFile, not to the picker. */}
         <input
           ref={fileInputRef}
           type="file"
-          accept=".jpg,.jpeg,.png,.webp"
-          onChange={handleImageSelect}
+          accept={SUPPORTED_INPUT_ACCEPT}
+          onChange={handleFileSelect}
           className="hidden"
         />
-        <input
-          ref={documentInputRef}
-          type="file"
-          accept=".pdf,.docx,.txt,.md,.markdown,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown"
-          onChange={handleDocumentSelect}
-          className="hidden"
-        />
+
 
         {/* Bottom toolbar — mobile gets its own stacked layout; desktop keeps
             the single row. The two layouts share all handlers and state. */}
@@ -528,7 +550,11 @@ export function InputArea() {
               Row3 clear + translate */}
           <div className="md:hidden min-w-0">
             <div className="flex items-center justify-between gap-2 px-4 pt-3">
-              <InputTypeToggle />
+              <ChooseFileButton
+                onClick={handleChooseFile}
+                disabled={isLoading || fileStatus === 'parsing'}
+                className="h-11 -ml-3"
+              />
 
               <AdvancedToggle
                 showAdvanced={showAdvanced}
@@ -557,9 +583,13 @@ export function InputArea() {
 
           {/* Desktop layout: unchanged single row */}
           <div className="hidden md:flex items-center justify-between px-5 py-4 min-w-0">
-            {/* Left: Input type & Language direction */}
+            {/* Left: upload, language direction, secondary actions */}
             <div className="flex items-center gap-4">
-              <InputTypeToggle />
+              <ChooseFileButton
+                onClick={handleChooseFile}
+                disabled={isLoading || fileStatus === 'parsing'}
+                className="h-[36px] -ml-3"
+              />
 
               {/* Divider */}
               <div className="w-px h-6 bg-[#e0e0e0]" />
@@ -636,24 +666,33 @@ export function InputArea() {
       {/* Drag overlay */}
       {isDragOver && (
         <div className="absolute inset-0 bg-[#1677ff] bg-opacity-5 rounded-xl flex items-center justify-center pointer-events-none z-10">
-          <div className="bg-white rounded-xl px-8 py-5 shadow-lg">
-            <p className="text-[16px] font-medium text-[#1677ff]">松开即可上传图片</p>
+          <div className="bg-white rounded-xl px-8 py-5 shadow-lg text-center">
+            <p className="text-[16px] font-medium text-[#1677ff]">松开即可上传文件</p>
           </div>
         </div>
       )}
       
-      {/* Image validation / processing error */}
-      {imageError && (
-        <div role="alert" className="mt-3 px-4 py-3 bg-[#fff2f0] border border-[#ff4d4f] rounded-lg flex items-center gap-2">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-[#ff4d4f] flex-shrink-0" aria-hidden="true">
+      {/* Drop / parse feedback for images and documents alike */}
+      {attachmentMessage && (
+        <div
+          role="alert"
+          className={`mt-3 px-4 py-3 border rounded-lg flex items-center gap-2 ${
+            attachmentMessage.tone === 'error'
+              ? 'bg-[#fff2f0] border-[#ff4d4f]'
+              : 'bg-[#f5f7fa] border-[#e0e0e0]'
+          }`}
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className={`flex-shrink-0 ${attachmentMessage.tone === 'error' ? 'text-[#ff4d4f]' : 'text-[#888888]'}`} aria-hidden="true">
             <path d="M8 1a7 7 0 110 14A7 7 0 018 1zm-.75 3.75a.75.75 0 00-1.5 0v3.5a.75.75 0 001.5 0v-3.5zm.75 6.25a.75.75 0 100-1.5.75.75 0 000 1.5z" fill="currentColor"/>
           </svg>
-          <span className="text-[13px] text-[#ff4d4f]">{imageError}</span>
+          <span className={`text-[13px] ${attachmentMessage.tone === 'error' ? 'text-[#ff4d4f]' : 'text-[#666666]'}`}>
+            {attachmentMessage.text}
+          </span>
           <button
             type="button"
-            onClick={() => setImageError(null)}
+            onClick={() => setAttachmentMessage(null)}
             aria-label="关闭提示"
-            className="ml-auto text-[#ff4d4f] hover:text-[#d9363e]"
+            className={`ml-auto ${attachmentMessage.tone === 'error' ? 'text-[#ff4d4f] hover:text-[#d9363e]' : 'text-[#888888] hover:text-[#666666]'}`}
           >
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
               <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>

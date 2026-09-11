@@ -1,8 +1,9 @@
 import { create } from 'zustand';
-import { translateStream as apiTranslateStream, checkHealth } from '../api/client';
+import { translateStream as apiTranslateStream, checkHealth, type TranslationResponse } from '../api/client';
 import { DEMO_SAMPLES } from '../demo/samples';
 import { translateDocument, type DocumentProgressStatus } from '../services/document/translateDocument';
-import type { ParsedDocumentFile } from '../services/document/fileParser';
+import { translatePdfAsImages, type PdfVisionStatus } from '../services/document/pdfVision';
+import type { DocumentFileErrorCode, ParsedDocumentFile } from '../services/document/fileParser';
 
 export type TranslationMode = 
   | 'auto'
@@ -69,14 +70,19 @@ export interface TranslationResult {
 }
 
 interface TranslationState {
-  // Input
+  // Input. There is no stored input mode: the pipeline is derived from what is
+  // attached (see effectiveInputMode).
   inputText: string;
   inputImage: string | null;
-  inputMode: InputMode;
   imageSource: ImageSource;
   documentFile: ParsedDocumentFile | null;
   fileStatus: 'idle' | 'parsing' | 'ready' | 'error';
   fileError: string | null;
+  // Reason the file was rejected, so the UI can offer the vision route for a
+  // PDF that has no usable text layer.
+  fileErrorCode: DocumentFileErrorCode | null;
+  // The raw file, kept for routes that need to read it again (page rendering).
+  documentSourceFile: File | null;
 
   // Lightbox (pure UI; rendered by <Lightbox /> at the app root)
   previewImage: PreviewImage | null;
@@ -113,9 +119,9 @@ interface TranslationState {
   // Actions
   setInputText: (text: string) => void;
   setInputImage: (image: string | null) => void;
-  setInputMode: (mode: InputMode) => void;
   setDocumentFile: (file: ParsedDocumentFile | null) => void;
-  setFileStatus: (status: TranslationState['fileStatus'], error?: string | null) => void;
+  setDocumentSourceFile: (file: File | null) => void;
+  setFileStatus: (status: TranslationState['fileStatus'], error?: string | null, code?: DocumentFileErrorCode | null) => void;
   openPreview: (src: string, alt: string) => void;
   closePreview: () => void;
   setMode: (mode: TranslationMode) => void;
@@ -131,6 +137,7 @@ interface TranslationState {
   checkService: () => Promise<void>;
   loadDemoSample: (index: number) => Promise<void>;
   translate: () => Promise<void>;
+  translateScannedPdf: () => Promise<void>;
   reset: () => void;
 }
 
@@ -148,14 +155,48 @@ function invalidateActiveStream() {
   }
 }
 
+// The upload entry is unified: there is no user-visible mode switch any more, so
+// the pipeline follows what is actually attached. Deriving it here (instead of
+// storing a mode the UI must remember to reset) makes a stale mode impossible:
+// removing an attachment returns the session to plain text automatically.
+export function effectiveInputMode(input: Pick<TranslationState, 'documentFile' | 'inputImage'>): InputMode {
+  if (input.documentFile) return 'file';
+  if (input.inputImage) return 'image';
+  return 'text';
+}
+
+// Single mapping from a model response to the session result, shared by the
+// text/document/vision paths so their result shape cannot drift apart.
+function toTranslationResult(response: TranslationResponse): TranslationResult {
+  return {
+    source: 'real',
+    sourceLanguage: response.source_language,
+    targetLanguage: response.target_language,
+    translation: response.translation,
+    detectedText: response.detected_text || undefined,
+    segments: (response.segments || []).map((segment) => ({
+      ...segment,
+      type: segment.type as TranslationSegmentType,
+    })),
+    notes: response.notes || [],
+  };
+}
+
+function visionStatusText(status: PdfVisionStatus, percent: number): string {
+  if (status === 'rendering') return '正在渲染 PDF 页面…';
+  if (status === 'assembling') return '正在整理完整译文…';
+  return `正在逐页识别翻译… 已完成 ${percent}%`;
+}
+
 export const useTranslationStore = create<TranslationState>((set, get) => ({
   inputText: '',
   inputImage: null,
-  inputMode: 'text',
   imageSource: null,
   documentFile: null,
   fileStatus: 'idle',
   fileError: null,
+  fileErrorCode: null,
+  documentSourceFile: null,
   previewImage: null,
   
   mode: 'auto',
@@ -199,16 +240,17 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
     }
     return { inputImage: image, imageSource: 'user', previewImage: null };
   }),
-  setInputMode: (mode) => set({ inputMode: mode }),
   setDocumentFile: (file) => set({
     documentFile: file,
     fileStatus: file ? 'ready' : 'idle',
     fileError: null,
+    fileErrorCode: null,
     isDemoMode: false,
     activeDemoId: null,
     result: null,
   }),
-  setFileStatus: (status, error = null) => set({ fileStatus: status, fileError: error }),
+  setDocumentSourceFile: (file) => set({ documentSourceFile: file }),
+  setFileStatus: (status, error = null, code = null) => set({ fileStatus: status, fileError: error, fileErrorCode: code }),
   openPreview: (src, alt) => set({ previewImage: { src, alt } }),
   closePreview: () => set({ previewImage: null }),
   setMode: (mode) => set({ mode }),
@@ -239,11 +281,12 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
     set({
       inputText: demo.inputType === 'text' ? demo.source : '',
       inputImage: null,
-      inputMode: demo.inputType,
       imageSource: demo.inputType === 'image' ? 'demo' : null,
       documentFile: null,
       fileStatus: 'idle',
       fileError: null,
+      fileErrorCode: null,
+      documentSourceFile: null,
       mode: demo.mode,
       context: demo.context ?? '',
       terminology: demo.terminology ?? '',
@@ -283,10 +326,9 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   
   translate: async () => {
     const state = get();
-    const documentText = state.inputMode === 'file' ? state.documentFile?.text || '' : state.inputText;
-    if (state.inputMode === 'file' && !state.documentFile) return;
-    if (state.inputMode === 'image' && !state.inputImage) return;
-    if (state.inputMode === 'text' && !documentText.trim()) return;
+    const inputMode = effectiveInputMode(state);
+    const documentText = inputMode === 'file' ? state.documentFile?.text || '' : state.inputText;
+    if (inputMode === 'text' && !documentText.trim()) return;
     
     // Translating is a real action: exit demo and drop any demo result.
     // A demo image being translated has been adopted as real content, so it
@@ -309,7 +351,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       // Comic streams no translation text (final is rebuilt from segments);
       // surface what the backend is doing instead.
       streamStatus: state.mode === 'comic' ? '正在分析漫画结构…' : null,
-      progressPercent: state.inputMode === 'image' ? null : 0,
+      progressPercent: inputMode === 'image' ? null : 0,
     });
     
     try {
@@ -338,7 +380,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
         return `正在翻译长文内容… 已完成 ${percent}%`;
       };
 
-      const response = state.inputMode === 'image'
+      const response = inputMode === 'image'
         ? await apiTranslateStream({
             text: state.inputText || undefined,
             imageDataUrl: state.inputImage || undefined,
@@ -371,18 +413,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       if (!isCurrent()) return;
 
       set({
-        result: {
-          source: 'real',
-          sourceLanguage: response.source_language,
-          targetLanguage: response.target_language,
-          translation: response.translation,
-          detectedText: response.detected_text || undefined,
-          segments: (response.segments || []).map(s => ({
-            ...s,
-            type: s.type as TranslationSegmentType
-          })),
-          notes: response.notes || []
-        },
+        result: toTranslationResult(response),
         isLoading: false,
         isStreaming: false,
         streamingText: '',
@@ -403,6 +434,77 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       if (activeAbort === controller) activeAbort = null;
     }
   },
+
+  // Vision route for a PDF that has no usable text layer. It is always an
+  // explicit user action: every page is sent as an image, which costs far more
+  // than the text pipeline.
+  translateScannedPdf: async () => {
+    const state = get();
+    const file = state.documentSourceFile;
+    if (!file) return;
+
+    invalidateActiveStream();
+    const generation = requestGeneration;
+    const controller = new AbortController();
+    activeAbort = controller;
+    const isCurrent = () => generation === requestGeneration && !controller.signal.aborted;
+
+    set({
+      isLoading: true,
+      error: null,
+      isDemoMode: false,
+      activeDemoId: null,
+      result: null,
+      streamingText: '',
+      isStreaming: true,
+      streamStatus: '正在渲染 PDF 页面…',
+      progressPercent: 0,
+    });
+
+    try {
+      const response = await translatePdfAsImages({
+        file,
+        mode: state.mode,
+        context: state.context || undefined,
+        terminology: state.terminology || undefined,
+        preserveNames: state.preserveNames,
+        explainTranslation: state.explainTranslation,
+      }, {
+        signal: controller.signal,
+        onProgress: ({ percent, status, provisionalText }) => {
+          if (!isCurrent()) return;
+          set({
+            streamingText: provisionalText,
+            streamStatus: visionStatusText(status, percent),
+            progressPercent: percent,
+          });
+        },
+      });
+
+      if (!isCurrent()) return;
+      set({
+        result: toTranslationResult(response),
+        isLoading: false,
+        isStreaming: false,
+        streamingText: '',
+        streamStatus: null,
+        progressPercent: 100,
+        fileStatus: 'ready',
+      });
+    } catch (err) {
+      if (!isCurrent()) return;
+      set({
+        isLoading: false,
+        isStreaming: false,
+        streamingText: '',
+        streamStatus: null,
+        progressPercent: null,
+        error: err instanceof Error ? err.message : '逐页翻译失败，请稍后重试',
+      });
+    } finally {
+      if (activeAbort === controller) activeAbort = null;
+    }
+  },
   
   // Full new-session reset (single implementation behind every "新建翻译"
   // entry). Clears the whole translation session: input, image, settings
@@ -413,11 +515,12 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
     set({
       inputText: '',
       inputImage: null,
-      inputMode: 'text',
       imageSource: null,
       documentFile: null,
       fileStatus: 'idle',
       fileError: null,
+      fileErrorCode: null,
+      documentSourceFile: null,
       mode: 'auto',
       context: '',
       terminology: '',
