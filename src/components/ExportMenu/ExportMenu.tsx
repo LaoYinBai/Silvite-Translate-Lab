@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useTranslationStore } from '../../store/translationStore';
+import { effectiveInputMode, useTranslationStore } from '../../store/translationStore';
 import { exportTranslation, type ExportFormat, type TranslationExportData } from '../../services/export';
 
 export function ExportMenu() {
@@ -9,7 +9,7 @@ export function ExportMenu() {
   const [error, setError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const { result, isDemoMode, inputText, inputMode, documentFile, mode, context, terminology } = useTranslationStore();
+  const { result, isDemoMode, inputText, inputImage, documentFile, mode, context, terminology } = useTranslationStore();
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -29,7 +29,7 @@ export function ExportMenu() {
       sourceLanguage: result.sourceLanguage,
       targetLanguage: result.targetLanguage,
       mode,
-      sourceText: inputMode === 'file'
+      sourceText: effectiveInputMode({ documentFile, inputImage }) === 'file'
         ? documentFile?.text || ''
         : inputText || result.detectedText || '',
       translation: result.translation,
