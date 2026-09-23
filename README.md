@@ -3,7 +3,7 @@
 > 面向译者与翻译学习场景的 AI 翻译工作台。  
 > 不只是“把文字换一种语言”，而是尽可能理解 **上下文、术语、文体与图片中的视觉关系**。
 
-Silvite Translate Lab 是一个基于 **React + EdgeOne Pages + Xiaomi MiMo V2.5** 构建的实验性 AI 翻译工具。
+Silvite Translate Lab 是一个基于 **React + EdgeOne Pages + Xiaomi MiMo V2.6 Flash** 构建的实验性 AI 翻译工具。
 
 它支持文本与图片翻译、多语言自动路由、上下文消歧、术语硬约束，以及针对文学、学术、商务和漫画等不同场景的翻译策略。
 
@@ -310,7 +310,7 @@ Demo 数据与真实用户翻译状态相互隔离。
                │ Server-side API
                ▼
 ┌─────────────────────────────┐
-│      Xiaomi MiMo V2.5       │
+│   Xiaomi MiMo V2.6 Flash    │
 │                             │
 │ Text + Multimodal Model     │
 └─────────────────────────────┘
@@ -333,7 +333,7 @@ Demo 数据与真实用户翻译状态相互隔离。
 - EdgeOne Pages
 - EdgeOne Cloud Functions
 - Node.js 20 Runtime（单次执行上限 120 秒）
-- Xiaomi MiMo V2.5
+- Xiaomi MiMo V2.6 Flash（默认生成模型，服务端关闭 Thinking）
 
 API：
 
@@ -351,6 +351,24 @@ Prompt：
 
 ```text
 cloud-functions/api/prompts.mjs
+```
+
+### 实时翻译 Beta
+
+侧栏「实时翻译」使用浏览器麦克风采集，经 AudioWorklet 生成单声道 16 kHz PCM WAV 短片段，
+按停顿与音频窗口调用服务端 `/api/realtime/transcribe`；ASR 响应通过 SSE 回传可修订文本，
+再调用 `/api/realtime/translate` 生成临时字幕与确认译文。实时 ASR 使用
+`mimo-v2.5-asr`，实时及普通文本翻译统一使用 `mimo-v2.6-flash`，且关闭 Thinking。
+
+当前只支持中文、英文及中英自动识别，不是持续推流 WebSocket ASR；源音频仅临时用于请求，
+不存储。浏览器需在安全上下文中支持 AudioWorklet 并允许麦克风。实现与状态机详见
+[`docs/realtime-translation-architecture.md`](docs/realtime-translation-architecture.md)。
+
+实时 API：
+
+```text
+POST /api/realtime/transcribe  # WAV 输入，SSE partial/final 响应
+POST /api/realtime/translate   # 当前语段 JSON 翻译
 ```
 
 ### 翻译请求生命周期（Streaming）
@@ -443,8 +461,9 @@ MIMO_API_KEY
 
 ```text
 Browser
-   ↓
-POST /api/translate
+   ├─ POST /api/translate
+   ├─ POST /api/realtime/transcribe
+   └─ POST /api/realtime/translate
    ↓
 EdgeOne Cloud Function
    ↓

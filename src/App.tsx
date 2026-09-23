@@ -3,6 +3,7 @@ import { Sidebar } from './components/Sidebar/Sidebar';
 import { InputArea } from './components/InputArea/InputArea';
 import { ResultArea } from './components/ResultArea/ResultArea';
 import { Lightbox } from './components/Lightbox/Lightbox';
+import { RealtimeTranslation } from './components/RealtimeTranslation/RealtimeTranslation';
 import { useTranslationStore } from './store/translationStore';
 
 function App() {
@@ -13,6 +14,7 @@ function App() {
   } = useTranslationStore();
   
   const [mobileSamplesOpen, setMobileSamplesOpen] = useState(false);
+  const [activeView, setActiveView] = useState<'translate' | 'realtime'>('translate');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (
     localStorage.getItem('silvite-theme') === 'dark' ? 'dark' : 'light'
   ));
@@ -28,6 +30,12 @@ function App() {
 
   const handleNewChat = () => {
     useTranslationStore.getState().reset();
+    setActiveView('translate');
+  };
+
+  const openRealtime = () => {
+    setMobileSamplesOpen(false);
+    setActiveView('realtime');
   };
 
   const hasResult = result || isLoading;
@@ -39,7 +47,7 @@ function App() {
       {/* Sidebar - hidden on small screens; samples open in a drawer.
           Desktop: fixed-width floating panel, rounded, clipped by itself. */}
       <div className="hidden md:block w-[280px] flex-shrink-0 rounded-[10px] overflow-hidden">
-        <Sidebar onNewChat={handleNewChat} />
+        <Sidebar onNewChat={handleNewChat} onRealtime={openRealtime} />
       </div>
       
       {/* Mobile samples drawer */}
@@ -56,6 +64,7 @@ function App() {
                 handleNewChat();
                 setMobileSamplesOpen(false);
               }}
+              onRealtime={openRealtime}
               onSamplePicked={() => setMobileSamplesOpen(false)}
             />
           </div>
@@ -79,7 +88,7 @@ function App() {
               </svg>
               样本
             </button>
-            <h2 className="text-[16px] sm:text-[19px] font-semibold text-[#1a1a1a] truncate">Translate Lab</h2>
+            <h2 className="text-[16px] sm:text-[19px] font-semibold text-[#1a1a1a] truncate">{activeView === 'realtime' ? '实时翻译' : 'Translate Lab'}</h2>
             <span className="text-[11px] sm:text-[13px] text-[#888888] bg-[#f5f5f5] px-2 py-0.5 sm:px-3 sm:py-1 rounded-full flex-shrink-0">
               实验版
             </span>
@@ -88,6 +97,8 @@ function App() {
         
         {/* Content area - scrollable */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
+          {activeView === 'realtime' ? <RealtimeTranslation onBack={() => setActiveView('translate')} /> : (
+          <>
           {/* Workspace: mobile starts near the top; desktop stays centered */}
           <div className="min-h-full flex justify-start md:items-center md:justify-center px-4 py-6 md:px-10 md:py-10">
             {/* Workspace container */}
@@ -155,6 +166,8 @@ function App() {
               )}
             </div>
           </div>
+          </>
+          )}
         </div>
       </main>
 

@@ -1,5 +1,7 @@
 import { createServer } from 'node:http';
 import { onRequest } from '../cloud-functions/api/translate.js';
+import { onRequest as onRealtimeTranscribe } from '../cloud-functions/api/realtime/transcribe.js';
+import { onRequest as onRealtimeTranslate } from '../cloud-functions/api/realtime/translate.js';
 
 const PORT = 3001;
 
@@ -33,11 +35,19 @@ const server = createServer(async (req, res) => {
       MAX_INPUT_LENGTH: process.env.MAX_INPUT_LENGTH,
       MAX_COMPLETION_TOKENS: process.env.MAX_COMPLETION_TOKENS,
       ALLOWED_ORIGIN: process.env.ALLOWED_ORIGIN,
+      REALTIME_ASR_RATE_LIMIT: process.env.REALTIME_ASR_RATE_LIMIT,
+      REALTIME_TRANSLATE_RATE_LIMIT: process.env.REALTIME_TRANSLATE_RATE_LIMIT,
+      REALTIME_RATE_LIMIT_WINDOW_MS: process.env.REALTIME_RATE_LIMIT_WINDOW_MS,
     },
   };
 
   try {
-    const response = await onRequest(context);
+    const handler = url.pathname === '/api/realtime/transcribe'
+      ? onRealtimeTranscribe
+      : url.pathname === '/api/realtime/translate'
+        ? onRealtimeTranslate
+        : onRequest;
+    const response = await handler(context);
     const responseHeaders: Record<string, string> = {};
     response.headers.forEach((value, key) => {
       responseHeaders[key] = value;

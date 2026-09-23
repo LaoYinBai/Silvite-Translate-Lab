@@ -36,7 +36,7 @@ test('both providers are registered and advertised', () => {
   assert.equal(providers.find((provider) => provider.id === 'glm').label, 'GLM-4.6V-Flash');
 });
 
-test('a request without a model keeps the previous MiMo path byte-for-byte', async () => {
+test('a request without a model uses MiMo V2.6 Flash with thinking disabled', async () => {
   const captured = captureFetch();
   const response = await onRequest({ request: makeRequest({ text: 'Hello', mode: 'natural' }), env: ENV });
   assert.equal(response.status, 200);
@@ -44,10 +44,14 @@ test('a request without a model keeps the previous MiMo path byte-for-byte', asy
   assert.equal(captured.length, 1);
   assert.equal(captured[0].url, MIMO_URL);
   assert.equal(captured[0].headers.Authorization, 'Bearer mimo-test-key');
-  assert.equal(captured[0].body.model, 'mimo-v2.5');
+  assert.equal(captured[0].body.model, 'mimo-v2.6-flash');
   assert.deepEqual(captured[0].body.thinking, { type: 'disabled' });
   assert.ok(captured[0].body.max_completion_tokens > 0);
   assert.equal(captured[0].body.stream, true);
+});
+
+test('an obsolete MIMO_MODEL deployment override cannot route calls back to an old model', () => {
+  assert.equal(resolveProvider('mimo', { MIMO_MODEL: 'mimo-v2.5' }).model, 'mimo-v2.6-flash');
 });
 
 test('selecting GLM routes to the Zhipu endpoint with its own key and shape', async () => {

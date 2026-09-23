@@ -53,16 +53,17 @@ const MIMO_API_URL = 'https://api.xiaomimimo.com/v1/chat/completions';
 // credentials, model id and request shape. The Silvite SSE contract, retry
 // policy, JSON validation, prompt composition and completion budget policy are
 // shared, so a request to either provider behaves identically to the client.
-// Default stays MiMo: a request without `model` follows exactly the previous path.
+// MiMo is pinned to the current default generation model; an old MIMO_MODEL
+// deployment variable must not silently keep the service on a retired model.
 export const DEFAULT_PROVIDER_ID = 'mimo';
 
 const PROVIDER_DEFINITIONS = {
   mimo: {
     id: 'mimo',
-    label: 'MiMo V2.5',
+    label: 'MiMo V2.6 Flash',
     url: MIMO_API_URL,
     apiKeyEnv: 'MIMO_API_KEY',
-    defaultModel: 'mimo-v2.5',
+    defaultModel: 'mimo-v2.6-flash',
     // MiMo needs thinking disabled so temperature is honoured; other providers
     // may not accept the parameter at all.
     thinkingDisabled: true,
@@ -91,9 +92,8 @@ export function normalizeProviderId(value) {
     : DEFAULT_PROVIDER_ID;
 }
 
-// Every provider value is overridable from the environment so a deployment can
-// be repointed (endpoint, model, output ceiling, budget parameter) without a
-// code change.
+// Provider endpoint, output ceiling and budget parameter may be overridden
+// per deployment. MiMo's generation model is intentionally pinned above.
 export function resolveProvider(providerId, env = {}) {
   const definition = PROVIDER_DEFINITIONS[normalizeProviderId(providerId)];
   const prefix = definition.apiKeyEnv.replace(/_API_KEY$/, '');
@@ -102,7 +102,9 @@ export function resolveProvider(providerId, env = {}) {
     ...definition,
     apiKey: env[definition.apiKeyEnv],
     url: env[`${prefix}_BASE_URL`] || definition.url,
-    model: env[`${prefix}_MODEL`] || definition.defaultModel,
+    model: definition.id === 'mimo'
+      ? definition.defaultModel
+      : env[`${prefix}_MODEL`] || definition.defaultModel,
     budgetParam: env[`${prefix}_BUDGET_PARAM`] || definition.budgetParam,
     maxCompletionTokens: Number.isFinite(ceiling) && ceiling > 0 ? ceiling : definition.maxCompletionTokens,
   };
@@ -418,8 +420,8 @@ export function composeTranslationPrompt(options = {}) {
 }
 
 // Completion budget policy. Thinking is disabled for translation requests, so
-// these are pure output budgets. MiMo mimo-v2.5 accepts [1, 131072] and
-// defaults to 32768; one truncated long-form retry may use up to 65536.
+// these are pure output budgets. MiMo V2.6 Flash accepts up to 131072 output
+// tokens and defaults to 32768; one truncated long-form retry may use up to 65536.
 const MAX_COMPLETION_TOKENS_CEILING = 65536;
 
 // Deterministic output budget from input shape. Not user-controllable; env
