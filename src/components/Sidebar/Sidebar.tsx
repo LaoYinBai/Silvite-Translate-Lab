@@ -5,9 +5,10 @@ import { DemoSampleList } from './DemoSampleList';
 interface SidebarProps {
   onNewChat: () => void;
   onSamplePicked?: () => void;
+  onRealtime?: () => void;
 }
 
-export function Sidebar({ onNewChat, onSamplePicked }: SidebarProps) {
+export function Sidebar({ onNewChat, onSamplePicked, onRealtime }: SidebarProps) {
   const { isServiceOnline } = useTranslationStore();
 
   return (
@@ -39,6 +40,21 @@ export function Sidebar({ onNewChat, onSamplePicked }: SidebarProps) {
           新建翻译
         </button>
       </div>
+
+      {onRealtime && (
+        <div className="px-2.5 pb-2.5">
+          <button
+            type="button"
+            onClick={onRealtime}
+            className="w-full h-10 flex items-center gap-2.5 px-3 rounded-lg border border-[#e4e6ea] bg-white text-[13px] font-medium text-[#555555] hover:bg-[#f9fafb] transition-colors"
+          >
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path d="M10 2.5a2.5 2.5 0 00-2.5 2.5v5a2.5 2.5 0 005 0V5A2.5 2.5 0 0010 2.5zM5 9.5a5 5 0 0010 0M10 14.5V18m-3 0h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            实时翻译 <span className="ml-auto text-[10px] text-[#888888]">Beta</span>
+          </button>
+        </div>
+      )}
       
       {/* Demo samples - explicitly labeled, not fake history */}
       <div className="flex-1 overflow-y-auto">

@@ -2,16 +2,21 @@
 
 > Experimental AI-assisted translation tool for Chinese-English translation scenarios.
 
+> **现行实现说明（2026-09-23）**：本文后半部分保留了项目历史设计与阶段计划，部分段落是
+> 当时的方案而非当前代码。现行部署、模型和翻译链路以仓库代码及 README 为准；实时语音链路、
+> 数据模型、时序和已知限制以 [`docs/realtime-translation-architecture.md`](docs/realtime-translation-architecture.md) 为准。
+> 当前 `/api/translate` 与实时接口都由 `cloud-functions/api/` 目录下的 EdgeOne Cloud Functions 提供。
+
 ---
 
 ## 一、技术架构确认
 
-### 1.1 MiMo V2.5 API 真实信息（已验证）
+### 1.1 MiMo V2.6 Flash API 当前配置
 
 | 项目 | 值 |
 |------|-----|
 | **官方 Base URL** | `https://api.xiaomimimo.com/v1` |
-| **模型名称** | `mimo-v2.5` |
+| **模型名称** | `mimo-v2.6-flash` |
 | **API 兼容性** | OpenAI Chat Completions 格式 |
 | **图片输入方式** | `image_url` (URL) 或 `data:{MIME_TYPE};base64,{BASE64}` |
 | **支持图片格式** | JPEG, PNG, GIF, WebP, BMP |
@@ -23,7 +28,7 @@
 
 ```json
 {
-  "model": "mimo-v2.5",
+  "model": "mimo-v2.6-flash",
   "messages": [
     {
       "role": "system",
@@ -43,7 +48,7 @@
 
 ```json
 {
-  "model": "mimo-v2.5",
+  "model": "mimo-v2.6-flash",
   "messages": [
     {
       "role": "system",
@@ -164,7 +169,7 @@ silvite-translate-lab/
 | **状态管理** | Zustand | 轻量状态 |
 | **部署** | GitHub Pages | 静态前端 |
 | **Serverless** | Vercel Functions 或 Cloudflare Workers | API 代理 |
-| **模型** | MiMo V2.5 | 翻译引擎 |
+| **模型** | MiMo V2.6 Flash | 翻译引擎 |
 
 ---
 
@@ -254,7 +259,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         'Authorization': `Bearer ${MIMO_API_KEY}`
       },
       body: JSON.stringify({
-        model: 'mimo-v2.5',
+        model: 'mimo-v2.6-flash',
         messages,
         max_completion_tokens: max_tokens,
         temperature
@@ -2313,7 +2318,7 @@ API 网关负责处理认证、限流和请求路由。
 | **Phase 0** | 初始化项目、Vite + React + TS、配置 GitHub Pages | 可运行的空项目 |
 | **Phase 1** | 完成整个 UI（使用 mock 数据） | 完整界面 |
 | **Phase 2** | 接 Serverless、完成 MiMo 文本翻译 | 文本翻译可用 |
-| **Phase 3** | 完成图片输入、接 MiMo V2.5 多模态 | 图片翻译可用 |
+| **Phase 3** | 完成图片输入、接 MiMo 多模态 | 图片翻译可用 |
 | **Phase 4** | 加 Context / Terminology / Mode / Notes | 高级功能 |
 | **Phase 5** | 错误处理、Loading、Copy、Regenerate、CORS、Rate Limit、服务关闭开关 | 生产就绪 |
 | **Phase 6** | GitHub Pages 部署、Serverless 部署、端到端测试、Demo Samples | 上线 |
@@ -2327,7 +2332,7 @@ API 网关负责处理认证、限流和请求路由。
 - [ ] API Key 不出现在前端代码中
 - [ ] 文本中英自动识别和互译可用
 - [ ] 图片/漫画翻译可用
-- [ ] MiMo V2.5 官方 API 调用真实可用
+- [ ] MiMo 官方 API 调用真实可用（历史初始化清单）
 - [ ] UI 像成熟工具，不像 AI 模板
 - [ ] 课堂现场操作流程不超过 3 步
 - [ ] 异常时不会崩页面
@@ -2344,7 +2349,7 @@ API 网关负责处理认证、限流和请求路由。
 ## 十七、注意事项
 
 1. **API Key 安全**：MiMo API Key 只能存在于 Vercel/Cloudflare 环境变量中，严禁写入前端代码
-2. **图片处理**：优先使用 base64 data URL 方式，MiMo V2.5 原生支持
+2. **图片处理**：优先使用 base64 data URL 方式，MiMo 原生支持
 3. **JSON 解析**：必须做健壮解析，模型偶尔会返回非法 JSON
 4. **限流**：短期 demo 必须防止 API 被刷爆
 5. **服务开关**：通过 `SERVICE_ENABLED=false` 可一键关闭服务
@@ -2597,8 +2602,9 @@ PDF 进入图片校验并被拒（「不支持的文件格式，请使用 JPG、
   `model` 参数、以及服务端 provider 注册表与 `GLM_*` 环境变量全部保留；
   恢复入口只需在前端加回一处控件，底层无需改动。
 
-- 新增环境变量：`GLM_API_KEY`（必需）；可选覆盖 `GLM_MODEL` / `GLM_BASE_URL` /
-  `GLM_MAX_COMPLETION_TOKENS` / `GLM_BUDGET_PARAM`，MiMo 同名前缀亦可覆盖。
+- 新增环境变量：`GLM_API_KEY`（可选）；可选覆盖 `GLM_MODEL` / `GLM_BASE_URL` /
+  `GLM_MAX_COMPLETION_TOKENS` / `GLM_BUDGET_PARAM`。MiMo 生成模型固定为
+  `mimo-v2.6-flash`；API Key 与预算/端点仍使用原服务端环境变量。
 - 未知 provider id 回落默认 provider；已选 provider 缺 key 时返回 500 并指明 provider，
   不会发起上游请求，也不会静默改用其他 provider。
 - MiMo 仍收 `thinking:{type:"disabled"}`；GLM 不接收该参数。GLM 的输出预算参数按

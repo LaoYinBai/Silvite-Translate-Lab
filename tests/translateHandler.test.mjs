@@ -33,7 +33,7 @@ test('academic mode reaches MiMo with academic prompt, context and terminology',
   const events = await readSseEvents(response);
 
   assert.equal(response.status, 200);
-  assert.equal(captured.model, 'mimo-v2.5');
+  assert.equal(captured.model, 'mimo-v2.6-flash');
   assert.equal(captured.stream, true);
   assert.equal(captured.thinking.type, 'disabled');
   assert.match(captured.messages[0].content, /学术与技术模式/);
