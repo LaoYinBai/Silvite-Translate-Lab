@@ -41,6 +41,7 @@ test('AI alignment sends both complete passages to DeepSeek when the cloud reque
   assert.equal(upstream.body.model, 'deepseek-flash');
   assert.deepEqual(upstream.body.thinking, { type: 'disabled' });
   assert.equal(upstream.body.stream, false);
+  assert.deepEqual(upstream.body.response_format, { type: 'json_object' });
   const systemPrompt = upstream.body.messages[0].content;
   assert.match(systemPrompt, /align the two complete passages/i);
   const userPrompt = upstream.body.messages[1].content;
@@ -85,7 +86,8 @@ test('alignment endpoint classifies unusable model responses without leaking mod
   const cases = [
     { finish_reason: 'length', content: 'private truncated response', error: 'ALIGNMENT_INVALID_COMPLETION' },
     { finish_reason: 'stop', content: 'private non-json response', error: 'ALIGNMENT_INVALID_JSON' },
-    { finish_reason: 'stop', content: JSON.stringify({ segments: [] }), error: 'ALIGNMENT_INVALID_SCHEMA' },
+    { finish_reason: 'stop', content: JSON.stringify({ segments: [] }), error: 'ALIGNMENT_SCHEMA_ROOT' },
+    { finish_reason: 'stop', content: JSON.stringify({ pairs: [{ source_text: 'private source', target_text: 'private target' }] }), error: 'ALIGNMENT_SCHEMA_PAIR_FIELDS' },
     { finish_reason: 'stop', content: JSON.stringify({ pairs: [{ source: '改写', target: 'Changed' }] }), error: 'ALIGNMENT_TEXT_MISMATCH' },
     { finish_reason: 'stop', content: JSON.stringify({ pairs: [{ source: '中文甲；', target: 'English one;' }] }), error: 'ALIGNMENT_INCOMPLETE_COVERAGE' },
   ];
@@ -108,6 +110,6 @@ test('alignment endpoint classifies unusable model responses without leaking mod
 
     assert.equal(response.status, 502);
     assert.equal(JSON.parse(body).error, item.error);
-    assert.doesNotMatch(body, /private|改写|Changed|English one/);
+    assert.doesNotMatch(body, /private|source|target|改写|Changed|English one/);
   }
 });
