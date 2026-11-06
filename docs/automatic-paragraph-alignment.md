@@ -30,4 +30,12 @@ AI 最多生成 256 行，服务端超时 75 秒、客户端 85 秒，默认每 
 - 复制和 PDF / Word / Markdown 继续只使用 `result.translation`；翻译说明仍由现有导出选项控制。
 - “制作 TMX / RTF 语料”沿用当前分段对应的原文范围，可继续编辑、复核和导出；分段未完成时该操作等待，不擅自另取尚未完成的版本。
 
-不添加依赖。辅助分段会使用所选模型并产生额外请求；大文本和无需辅助的结果使用本地规则。代码入口在 `src/services/alignment/`、`cloud-functions/api/alignment*`、翻译 store 和结果组件。本轮已完成源码复核、类型及构建检查；没有实发模型验收，不能将请求接口接通等同于语义质量已通过验收。
+不添加依赖。辅助分段会使用所选模型并产生额外请求；大文本和无需辅助的结果使用本地规则。代码入口在 `src/services/alignment/`、`cloud-functions/api/alignment*`、翻译 store 和结果组件。
+
+## 线上故障与复验（2026-11-07）
+
+截图中的“AI 辅助分段暂未完成”表示 AI 请求失败后，界面保留了本地规则结果；本地算法的 12 组中有 3 组未匹配，所以这些内容显示为未找到对应。线上复现发现 EdgeOne 请求可能没有 `Request.signal`，旧处理器在调用模型前因此崩溃；随后还发现对齐接口自建的 `request.body.getReader()` 在 EdgeOne 请求流上读取失败。已改为可选 signal 和平台支持的 `request.text()`，并区分请求体、JSON、模型完成状态及原文校验错误。
+
+DeepSeek Flash 曾返回可解析 JSON，但不符合行字段约定。现在 DeepSeek 请求显式使用 JSON Output，并明确要求 `pairs[].source` 对应 `source_text`、`pairs[].target` 对应 `target_text`；服务端仍逐字校验，不完整或改写的输出不会被采用。JSON Output 仅约束 JSON 语法，详见 [DeepSeek JSON Output 文档](https://api-docs.deepseek.com/guides/json_mode/)。
+
+实发线上 DeepSeek 样文复验：HTTP 200，返回 8 组 AI 对齐；中文原文 374/374 字符、英文译文 1697/1697 字符均完整覆盖。样文为本项目生成的虚构测试文本，不含真实用户文档。全套 230 项自动测试、TypeScript/Vite 生产构建和 oxlint 通过；本次未进行浏览器端到端自动化验收。
