@@ -146,12 +146,16 @@ export async function onRequest({ request, env = {} }) {
       budget: Math.min(16_384, Math.max(2048, Math.ceil((input.sourceText.length + input.targetText.length) * 1.4) + 1024)),
       temperature: 0,
     });
+    const alignmentBody = { ...upstream.body, stream: false };
+    // DeepSeek's JSON Output constrains syntax, while the prompt and our
+    // validator constrain the exact bilingual pair schema and text coverage.
+    if (provider.id === 'deepseek') alignmentBody.response_format = { type: 'json_object' };
     const response = await fetch(upstream.url, {
       method: 'POST',
       headers: upstream.headers,
       // Keep the provider helper's model, budget and disabled thinking. A single
       // bounded completion is sufficient; no speculative retries or streaming.
-      body: JSON.stringify({ ...upstream.body, stream: false }),
+      body: JSON.stringify(alignmentBody),
       signal: controller.signal,
     });
     if (!response.ok) {
@@ -176,7 +180,8 @@ export async function onRequest({ request, env = {} }) {
     let rows;
     try { rows = validateAlignmentPairs(proposal, input.sourceText, input.targetText); }
     catch (error) {
-      const code = ['ALIGNMENT_NOT_SEGMENTED', 'ALIGNMENT_INVALID_SCHEMA', 'ALIGNMENT_TEXT_MISMATCH', 'ALIGNMENT_INCOMPLETE_COVERAGE']
+      const code = ['ALIGNMENT_NOT_SEGMENTED', 'ALIGNMENT_INVALID_SCHEMA', 'ALIGNMENT_SCHEMA_ROOT', 'ALIGNMENT_SCHEMA_ROW_LIMIT',
+        'ALIGNMENT_SCHEMA_PAIR_FIELDS', 'ALIGNMENT_SCHEMA_EMPTY_PAIR', 'ALIGNMENT_TEXT_MISMATCH', 'ALIGNMENT_INCOMPLETE_COVERAGE']
         .includes(error?.message) ? error.message : 'ALIGNMENT_INVALID_PROPOSAL';
       return jsonResponse({ error: code }, 502, headers);
     }
