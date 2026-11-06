@@ -99,7 +99,7 @@ test('comic image request combines comic prompt with visual input', async () => 
   assert.equal(finalEventOf(events).segments[0].type, 'dialogue');
 });
 
-test('plain text model response keeps raw-text fallback via stream final', async () => {
+test('unstructured chat never becomes a successful translation', async () => {
   globalThis.fetch = async () => mimoSseResponse('这不是 JSON');
 
   const response = await onRequest({
@@ -108,9 +108,9 @@ test('plain text model response keeps raw-text fallback via stream final', async
   });
   const events = await readSseEvents(response);
 
-  const final = finalEventOf(events);
-  assert.equal(final.translation, '这不是 JSON');
-  assert.equal(final.source_language, 'en');
+  assert.equal(finalEventOf(events), undefined);
+  assert.equal(events.at(-1).type, 'error');
+  assert.equal(events.at(-1).code, 'MODEL_FORMAT_FAILURE');
 });
 
 test('unescaped quotes in model JSON get repaired', async () => {

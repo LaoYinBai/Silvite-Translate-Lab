@@ -8,6 +8,8 @@ import {
   BUSINESS_PROMPT,
   COMIC_PROMPT,
   AUTO_MODE_INSTRUCTION,
+  TRANSLATION_USER_TASK,
+  TRANSLATION_OUTPUT_TASK,
 } from './prompts.mjs';
 import { buildProviderRequest, resolveProvider } from './providers.mjs';
 import { serializeTranslationData } from './translationData.mjs';
@@ -947,6 +949,7 @@ export async function onRequest(context) {
     const composition = composeTranslationPrompt({ mode, context: userContext, terminology, preserveNames, explainTranslation });
 
     const messages = [{ role: 'system', content: composition.prompt }];
+    const translationData = `${TRANSLATION_USER_TASK}\n\n${wrapSourceData(text, { context: userContext, terminology })}\n\n${TRANSLATION_OUTPUT_TASK}`;
 
     if (imageDataUrl) {
       messages.push({
@@ -955,12 +958,12 @@ export async function onRequest(context) {
           { type: 'image_url', image_url: { url: imageDataUrl } },
           {
             type: 'text',
-            text: `${composition.mode === 'comic' ? COMIC_IMAGE_INSTRUCTION : GENERIC_IMAGE_INSTRUCTION}\n\n${wrapSourceData(text, { context: userContext, terminology })}`,
+            text: `${composition.mode === 'comic' ? COMIC_IMAGE_INSTRUCTION : GENERIC_IMAGE_INSTRUCTION}\n\n${translationData}`,
           },
         ],
       });
     } else {
-      messages.push({ role: 'user', content: wrapSourceData(text, { context: userContext, terminology }) });
+      messages.push({ role: 'user', content: translationData });
     }
 
     const initialBudget = getCompletionBudget({
@@ -1081,7 +1084,10 @@ export async function onRequest(context) {
             }
 
             const parsed = parseModelContent(content, fallback, finishReason);
-            if (parsed.ok) {
+            // Unstructured chat is not evidence of a translation. In
+            // particular, never relabel an answer to a source question as a
+            // successful translation through the legacy plain-text fallback.
+            if (parsed.ok && parsed.recovery !== 'plain_text') {
               // Structure guard: parsing succeeded, but merged or dropped
               // source blocks are still a fidelity failure. Retry once with the
               // same budget; a second failure is accepted rather than surfaced,

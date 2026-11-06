@@ -1,20 +1,20 @@
-import type { TranslationNote, TranslationSegment } from '../../store/translationStore';
+import type { TranslationNote } from '../../store/translationStore';
 
 export interface TranslationExportData {
-  sourceLanguage: string;
-  targetLanguage: string;
-  mode: string;
-  sourceText: string;
   translation: string;
-  detectedText?: string | null;
-  context?: string;
-  terminology?: string;
   notes?: TranslationNote[];
-  segments?: TranslationSegment[];
   generatedAt: Date;
 }
 
 export type ExportFormat = 'pdf' | 'docx' | 'markdown';
+
+export interface ExportOptions {
+  includeNotes?: boolean;
+}
+
+export function exportNotes(data: TranslationExportData, options: ExportOptions): TranslationNote[] {
+  return options.includeNotes ? data.notes || [] : [];
+}
 
 export function formatTimestamp(date: Date): string {
   const y = date.getFullYear();
