@@ -26,12 +26,20 @@ function loadOfficeModule(): Promise<OfficeModule> {
     // first with the wasm bytes; this call is then a no-op.
     await module.default();
     return module;
-  })();
+  })().catch((error) => {
+    // A failed download must not poison every later import in this session.
+    modulePromise = null;
+    throw error;
+  });
   return modulePromise;
 }
 
 export async function extractOfficeText(kind: OfficeDocumentKind, arrayBuffer: ArrayBuffer): Promise<string> {
   const module = await loadOfficeModule();
   const document = new module.WasmDocument(new Uint8Array(arrayBuffer), FORMAT_NAMES[kind]);
-  return document.plainText();
+  try {
+    return document.plainText();
+  } finally {
+    document.free();
+  }
 }

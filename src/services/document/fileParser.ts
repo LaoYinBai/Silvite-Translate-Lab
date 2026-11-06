@@ -182,12 +182,11 @@ async function extractDocx(arrayBuffer: ArrayBuffer): Promise<string> {
       .replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, '$1\n\n')
       .replace(/<br\s*\/?>/gi, '\n')
       .replace(/<[^>]+>/g, '')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'");
+      // Decode once: literal source text such as "&lt;" becomes "&amp;lt;"
+      // in HTML and must not be decoded a second time into "<".
+      .replace(/&(nbsp|amp|lt|gt|quot|#39);/g, (_match, entity: string) => ({
+        nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'",
+      })[entity]!);
     return cleanPlainText(markdown)
       .replace(/<a id="[^"\n]+"><\/a>/g, '')
       .replace(/\n{3,}/g, '\n\n')
@@ -208,44 +207,27 @@ function normalizePdfPage(items: Array<{ str?: string; hasEOL?: boolean }>): str
   return text
     .split('\n')
     .map((line) => line.replace(/\s+/g, ' ').trim())
-    .filter((line) => line && !/^[-–—]?\s*\d{1,4}\s*[-–—]?$/.test(line))
+    .filter(Boolean)
     .join('\n')
     .trim();
-}
-
-function removeRepeatedPageEdges(pages: string[]): string[] {
-  if (pages.length < 3) return pages;
-  const lines = pages.map((page) => page.split('\n'));
-  const repeated = new Set<string>();
-  for (const edge of [0, -1]) {
-    const counts = new Map<string, number>();
-    for (const pageLines of lines) {
-      const value = pageLines.at(edge)?.trim();
-      if (value && value.length < 160) counts.set(value, (counts.get(value) || 0) + 1);
-    }
-    for (const [value, count] of counts) if (count >= Math.ceil(pages.length * 0.6)) repeated.add(value);
-  }
-  return lines.map((pageLines) => pageLines.filter((line, index) => {
-    const isEdge = index === 0 || index === pageLines.length - 1;
-    return !(isEdge && repeated.has(line.trim()));
-  }).join('\n').trim());
 }
 
 // pdf.js fetches CMaps, standard fonts, wasm decoders and ICC profiles as
 // separate files at runtime. Served from node_modules in dev and copied into
 // the build output (see the pdfjsAssets plugin in vite.config.ts).
 
-async function countTextDrawingOps(
+async function inspectPdfPageContent(
   page: { getOperatorList: () => Promise<{ fnArray: number[] }> },
   OPS: Record<string, number>,
-): Promise<number> {
-  try {
-    const operations = await page.getOperatorList();
-    return operations.fnArray.filter((fn) => fn === OPS.showText || fn === OPS.showSpacedText).length;
-  } catch {
-    // A page whose fonts cannot be evaluated yields no text either way.
-    return 0;
-  }
+): Promise<{ text: number; images: number }> {
+  const operations = await page.getOperatorList();
+  const imageOperations = new Set(['paintImageXObject', 'paintInlineImageXObject', 'paintImageMaskXObject',
+    'paintImageXObjectRepeat', 'paintImageMaskXObjectRepeat', 'paintInlineImageXObjectGroup',
+  ].map(name => OPS[name]).filter(value => typeof value === 'number'));
+  return {
+    text: operations.fnArray.filter(fn => fn === OPS.showText || fn === OPS.showSpacedText).length,
+    images: operations.fnArray.filter(fn => imageOperations.has(fn)).length,
+  };
 }
 
 async function extractPdf(arrayBuffer: ArrayBuffer): Promise<string> {
@@ -254,33 +236,49 @@ async function extractPdf(arrayBuffer: ArrayBuffer): Promise<string> {
     // Vite must receive a concrete worker URL. Node tests use PDF.js's fake
     // worker, while browsers load this bundled module worker.
     configurePdfjsWorker(pdfjs);
-    const pdf = await pdfjs.getDocument(pdfjsDocumentOptions(new Uint8Array(arrayBuffer))).promise;
+    const task = pdfjs.getDocument(pdfjsDocumentOptions(new Uint8Array(arrayBuffer)));
+    try {
+    const pdf = await task.promise;
     const OPS = pdfjs.OPS as unknown as Record<string, number>;
     const pages: string[] = [];
     let textItemCount = 0;
     let textDrawingOps = 0;
+    const imageOnlyPages: number[] = [], unreadablePages: number[] = [];
     for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
       const page = await pdf.getPage(pageNumber);
       const content = await page.getTextContent();
       textItemCount += content.items.length;
       const pageText = normalizePdfPage(content.items as Array<{ str?: string; hasEOL?: boolean }>);
-      // Only pages that produced nothing are worth an operator-list pass.
-      if (!pageText) textDrawingOps += await countTextDrawingOps(page, OPS);
+      // A mixed PDF must not silently omit pages which only contain scans.
+      // Truly blank pages are safe to skip; image/text drawing is different.
+      if (!pageText) {
+        const drawing = await inspectPdfPageContent(page, OPS);
+        textDrawingOps += drawing.text;
+        if (drawing.images) imageOnlyPages.push(pageNumber);
+        if (hasUnreadableTextLayer(content.items.length, drawing.text)) unreadablePages.push(pageNumber);
+      }
       pages.push(pageText);
     }
-    const text = removeRepeatedPageEdges(pages).filter(Boolean).join('\n\n').trim();
+    if (unreadablePages.length) throw new DocumentFileError('PDF_UNREADABLE_TEXT_LAYER',
+      '第 ' + unreadablePages.slice(0, 10).join('、') + ' 页的文字编码无法提取。请使用下方「视觉翻译（逐页识别）」处理完整 PDF。');
+    if (imageOnlyPages.length) throw new DocumentFileError('PDF_NO_TEXT',
+      '第 ' + imageOnlyPages.slice(0, 10).join('、') + ' 页仅检测到图片，可能是扫描页面。请使用下方「视觉翻译（逐页识别）」，避免遗漏正文。');
+    // Text alone cannot distinguish a repeated body line or a number from a
+    // header/footer. Preserve them rather than silently deleting source text.
+    const text = pages.filter(Boolean).join('\n\n').trim();
     if (text) return text;
 
     if (hasUnreadableTextLayer(textItemCount, textDrawingOps)) {
       throw new DocumentFileError(
         'PDF_UNREADABLE_TEXT_LAYER',
-        '这份 PDF 的文字使用了无法识别的字体编码，无法提取原文。可改用「图片」标签页上传页面截图，或换用其他格式。',
+        '这份 PDF 的文字使用了无法识别的字体编码，无法提取原文。可改用下方「视觉翻译（逐页识别）」，或换用其他格式。',
       );
     }
     throw new DocumentFileError(
       'PDF_NO_TEXT',
-      '当前 PDF 没有可提取的文字层（可能是扫描件）。可改用「图片」标签页上传页面截图，或换用其他格式。',
+      '当前 PDF 没有可提取的文字层（可能是扫描件）。可改用下方「视觉翻译（逐页识别）」，或换用其他格式。',
     );
+    } finally { await task.destroy().catch(() => {}); }
   } catch (error) {
     if (error instanceof DocumentFileError) throw error;
     const failure = describePdfFailure(error);
@@ -288,12 +286,27 @@ async function extractPdf(arrayBuffer: ArrayBuffer): Promise<string> {
   }
 }
 
-function extractPlainTextKind(kind: DocumentFileKind, arrayBuffer: ArrayBuffer, fileSize: number): string {
-  const suspiciousControls = new Uint8Array(arrayBuffer).filter((byte) => byte < 9 || (byte > 13 && byte < 32)).length;
-  if (suspiciousControls > Math.max(2, fileSize * 0.01)) {
-    throw new DocumentFileError('INVALID_FILE', '文本文件包含无效的二进制内容');
+function extractPlainTextKind(kind: DocumentFileKind, arrayBuffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(arrayBuffer);
+  // Only a BOM identifies UTF-16 unambiguously. Guessing legacy encodings can
+  // produce plausible but incorrect text, so reject undecodable files clearly.
+  const encoding = startsWith(bytes, [0xff, 0xfe]) ? 'utf-16le'
+    : startsWith(bytes, [0xfe, 0xff]) ? 'utf-16be' : 'utf-8';
+  let decoded: string;
+  try {
+    decoded = new TextDecoder(encoding, { fatal: true }).decode(bytes);
+  } catch {
+    throw new DocumentFileError('INVALID_FILE', '文本文件编码无法识别或内容不完整，请另存为 UTF-8 后重试（也支持带 BOM 的 UTF-16）');
   }
-  const text = cleanPlainText(new TextDecoder('utf-8', { fatal: false }).decode(arrayBuffer));
+  // Check decoded characters, not UTF-16 bytes. In particular, never silently
+  // remove NULs from a binary or unmarked UTF-16 file and call it valid text.
+  for (const character of decoded) {
+    const code = character.codePointAt(0)!;
+    if (code <= 8 || code >= 14 && code <= 31) {
+      throw new DocumentFileError('INVALID_FILE', '文本文件包含无效的二进制内容，请确认是文本文件并另存为 UTF-8 后重试');
+    }
+  }
+  const text = cleanPlainText(decoded);
   if (kind === 'srt' || kind === 'vtt' || kind === 'ass') return extractSubtitleText(text, kind);
   return text;
 }
@@ -325,7 +338,7 @@ export async function parseDocumentFile(file: File): Promise<ParsedDocumentFile>
   const kind = validateType(file, bytes);
   let text: string;
   if (TEXT_KINDS.has(kind)) {
-    text = extractPlainTextKind(kind, arrayBuffer, file.size);
+    text = extractPlainTextKind(kind, arrayBuffer);
   } else if (kind === 'docx') {
     text = await extractDocx(arrayBuffer);
   } else if (OFFICE_KINDS.has(kind)) {
