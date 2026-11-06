@@ -101,14 +101,17 @@ export async function onRequest({ request, env = {} }) {
   }
 
   const controller = new AbortController();
-  const abortFromRequest = () => controller.abort(request.signal.reason);
+  // EdgeOne's deployed Request can omit signal. Keep the upstream timeout and
+  // its own AbortController functional when downstream cancellation is absent.
+  const requestSignal = request.signal;
+  const abortFromRequest = () => controller.abort(requestSignal?.reason);
   let timedOut = false;
   const timer = setTimeout(() => {
     timedOut = true;
     controller.abort();
   }, ALIGNMENT_TIMEOUT_MS);
-  if (request.signal.aborted) abortFromRequest();
-  else request.signal.addEventListener('abort', abortFromRequest, { once: true });
+  if (requestSignal?.aborted) abortFromRequest();
+  else requestSignal?.addEventListener('abort', abortFromRequest, { once: true });
 
   try {
     let input;
@@ -166,10 +169,10 @@ export async function onRequest({ request, env = {} }) {
     }
     return new Response(payload, { status: 200, headers });
   } catch {
-    return jsonResponse({ error: timedOut ? 'ALIGNMENT_TIMEOUT' : request.signal.aborted ? 'ALIGNMENT_CANCELLED' : 'ALIGNMENT_NETWORK_ERROR' },
-      timedOut ? 504 : request.signal.aborted ? 499 : 502, headers);
+    return jsonResponse({ error: timedOut ? 'ALIGNMENT_TIMEOUT' : requestSignal?.aborted ? 'ALIGNMENT_CANCELLED' : 'ALIGNMENT_NETWORK_ERROR' },
+      timedOut ? 504 : requestSignal?.aborted ? 499 : 502, headers);
   } finally {
     clearTimeout(timer);
-    request.signal.removeEventListener('abort', abortFromRequest);
+    requestSignal?.removeEventListener('abort', abortFromRequest);
   }
 }
