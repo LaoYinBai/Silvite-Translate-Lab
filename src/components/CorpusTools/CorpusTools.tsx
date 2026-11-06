@@ -22,7 +22,7 @@ type ExportFormat = 'tmx' | 'rtf' | 'sdltm';
 export default function CorpusTools({ onBack }: { onBack: () => void }) {
   const project = useCorpusStore(state => state.project);
   const saving = useCorpusStore(state => state.saving);
-  const [tab, setTab] = useState<'convert' | 'align'>('convert');
+  const [tab, setTab] = useState<'convert' | 'align'>('align');
   const [tmxDirection, setTmxDirection] = useState<'auto' | 'zh-en' | 'en-zh'>('auto');
   const [leftRtfLanguage, setLeftRtfLanguage] = useState('zh-CN');
   const [chinese, setChinese] = useState<InputDocument>({ file: null, text: '' });
@@ -219,12 +219,12 @@ export default function CorpusTools({ onBack }: { onBack: () => void }) {
     <button type="button" onClick={() => { cancelWork('已停止处理，项目仍保留。'); setExporting(null); onBack(); }} className="mb-2 min-h-10 text-[13px] text-[#777777]">← 返回翻译</button>
     <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
       <div><h1 className="text-[24px] font-semibold text-[#222222]">中英语料工具 <span className="text-[12px] font-normal text-[#888888]">Beta</span></h1>
-        <p className="mt-1 text-[13px] leading-6 text-[#777777]">转换 TMX / 双栏 RTF，或把中文与英文文档整理为可校正的对应语料。文件在此浏览器内处理。</p></div>
+        <p className="mt-1 text-[13px] leading-6 text-[#777777]">选择中文与英文文档，自动对齐并校正，导出 TMX、双栏 RTF 或实验 SDLTM。文件在此浏览器内处理。</p></div>
       {project && <span className="text-[11px] text-[#888888]" role="status">{saving === 'saved' ? '已自动保存在此浏览器' : saving === 'saving' ? '正在本地保存…' : saving === 'error' ? '自动保存失败，请下载项目文件' : '尚有待保存修改'}</span>}
     </div>
     <div className="mb-4 flex flex-wrap gap-2" aria-label="语料工具流程">
-      <button type="button" disabled={busy} aria-pressed={tab === 'convert'} className={tab === 'convert' ? 'btn btn-primary min-h-11' : BUTTON} onClick={() => setTab('convert')}>格式转换</button>
       <button type="button" disabled={busy} aria-pressed={tab === 'align'} className={tab === 'align' ? 'btn btn-primary min-h-11' : BUTTON} onClick={() => setTab('align')}>中英双文档对齐</button>
+      <button type="button" disabled={busy} aria-pressed={tab === 'convert'} className={tab === 'convert' ? 'btn btn-primary min-h-11' : BUTTON} onClick={() => setTab('convert')}>格式转换</button>
     </div>
     {tab === 'convert' ? <div className="rounded-xl border border-[#e0e0e0] bg-white p-4 sm:p-5">
       <h2 className="text-[15px] font-medium text-[#333333]">导入已有双语对应</h2>
