@@ -2,8 +2,8 @@ export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 // Wire value for the upstream provider. The server maps each id to an endpoint,
 // credentials and request shape; unknown ids fall back to the default server
-// side. Kept as the extension seam for a future selector.
-export type TranslationModelId = 'mimo' | 'glm';
+// side. The same selection is used by text, images, documents and subtitles.
+export type TranslationModelId = 'deepseek' | 'glm';
 
 export interface TranslationRequest {
   text?: string;
@@ -69,7 +69,7 @@ class TranslationServiceError extends Error {
 
 /**
  * All model calls go through the EdgeOne Cloud Function at /api/translate.
- * The MiMo API key never reaches the frontend bundle.
+ * Provider API keys never reach the frontend bundle.
  *
  * Streaming: POST returns a custom SSE stream (start/delta/reset/final/error).
  * translateStream() consumes it incrementally; the promise resolves with the

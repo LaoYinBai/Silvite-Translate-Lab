@@ -130,9 +130,12 @@ export async function onRequest(context) {
   }
 
   const upstreamController = new AbortController();
-  const abortUpstream = () => upstreamController.abort(request.signal.reason);
-  if (request.signal.aborted) abortUpstream();
-  else request.signal.addEventListener('abort', abortUpstream, { once: true });
+  // Some cloud runtimes omit Request.signal; keep relay cancellation available
+  // even when downstream disconnect notifications are not exposed.
+  const requestSignal = request.signal;
+  const abortUpstream = () => upstreamController.abort(requestSignal?.reason);
+  if (requestSignal?.aborted) abortUpstream();
+  else requestSignal?.addEventListener('abort', abortUpstream, { once: true });
 
   let upstreamResponse;
   try {

@@ -3,7 +3,7 @@
 > 面向译者与翻译学习场景的 AI 翻译工作台。  
 > 不只是“把文字换一种语言”，而是尽可能理解 **上下文、术语、文体与图片中的视觉关系**。
 
-Silvite Translate Lab 是一个基于 **React + EdgeOne Pages + Xiaomi MiMo V2.6 Flash** 构建的实验性 AI 翻译工具。
+Silvite Translate Lab 是一个基于 **React + EdgeOne Pages + DeepSeek Flash / GLM 5.3 Flash** 构建的实验性 AI 翻译工具。
 
 它支持文本与图片翻译、多语言自动路由、上下文消歧、术语硬约束，以及针对文学、学术、商务和漫画等不同场景的翻译策略。
 
@@ -310,7 +310,7 @@ Demo 数据与真实用户翻译状态相互隔离。
                │ Server-side API
                ▼
 ┌─────────────────────────────┐
-│   Xiaomi MiMo V2.6 Flash    │
+│   DeepSeek / GLM Gateway     │
 │                             │
 │ Text + Multimodal Model     │
 └─────────────────────────────┘
@@ -333,7 +333,9 @@ Demo 数据与真实用户翻译状态相互隔离。
 - EdgeOne Pages
 - EdgeOne Cloud Functions
 - Node.js 20 Runtime（单次执行上限 120 秒）
-- Xiaomi MiMo V2.6 Flash（默认生成模型，服务端关闭 Thinking）
+- DeepSeek Flash（默认翻译模型，关闭 Thinking）
+- GLM 5.3 Flash（同一网关内的另一翻译候选，关闭 Thinking）
+- Xiaomi MiMo ASR（仅用于可选的在线语音识别）
 
 API：
 
@@ -355,26 +357,35 @@ cloud-functions/api/prompts.mjs
 
 ### 实时翻译 Beta
 
-侧栏「实时翻译」使用浏览器麦克风采集，经 AudioWorklet 生成单声道 16 kHz PCM WAV 短片段，
-按停顿与音频窗口调用服务端 `/api/realtime/transcribe`；ASR 响应通过 SSE 回传可修订文本，
-再调用 `/api/realtime/translate` 生成临时字幕与确认译文。实时 ASR 使用
-`mimo-v2.5-asr`，实时及普通文本翻译统一使用 `mimo-v2.6-flash`，且关闭 Thinking。
+侧栏「实时翻译」（手机从「菜单」进入）默认使用浏览器内 Whisper Tiny 和「仅转文字」。
+音频经 AudioWorklet 采集并按停顿或短窗口交给 Worker 识别；桌面默认 GPU 优先，触控设备默认
+CPU 兼容模式。音频不上传；取消「仅转文字」后，识别文字会调用 `/api/realtime/translate`
+生成流式译文草稿，句末再确认。识别与翻译独立排队，字幕记录区标明待完成和失败状态，支持逐段重试。
+模型加载后可以断网继续本机转写；页面离线重载尚未支持。
 
-当前只支持中文、英文及中英自动识别，不是持续推流 WebSocket ASR；源音频仅临时用于请求，
-不存储。浏览器需在安全上下文中支持 AudioWorklet 并允许麦克风。实现与状态机详见
-[`docs/realtime-translation-architecture.md`](docs/realtime-translation-architecture.md)。
+可选在线 MiMo 引擎调用 `/api/realtime/transcribe`，以 SSE 接收修订文本；在线 ASR 使用
+`mimo-v2.5-asr`，文字翻译统一使用 `mimo-v2.6-flash`，且关闭 Thinking。
+2026-11-06 线上 STT 实测返回 502；当前工作区已修复缺失 `Request.signal` 导致的异常，尚未部署。
+
+当前只支持中文、英文及自动识别，按短片段更新；Tiny 对中文、人名和术语可能识别不准，需复核。
+浏览器需在 HTTPS 或 localhost 中支持 AudioWorklet 并允许麦克风。实际 iOS/Android 仍需真机验收。
+`npm run dev` / `npm run build` 会准备模型与运行组件，发布时必须包含 `dist/whisper/`。
+使用和资源说明见 [Whisper 静态交付](docs/realtime-whisper.md)，实现与状态机见
+[实时翻译架构](docs/realtime-translation-architecture.md)，实测范围见
+[STT 验证记录](docs/research/2026-11-06-stt-verification.md)。
+流式字幕的本地实现、协议与未验证环节见 [实施记录](docs/realtime-streaming.md)。
 
 实时 API：
 
 ```text
 POST /api/realtime/transcribe  # WAV 输入，SSE partial/final 响应
-POST /api/realtime/translate   # 当前语段 JSON 翻译
+POST /api/realtime/translate   # 当前语段 JSON 输入，SSE start/delta/final/error 响应
 ```
 
 ### 翻译请求生命周期（Streaming）
 
-后端以 `stream: true` 调用 MiMo，消费其 SSE 后转换成 Silvite 自有的
-SSE 事件协议返回（`text/event-stream`）。前端永远看不到 MiMo 协议细节。
+后端以 `stream: true` 调用所选的 DeepSeek / GLM，消费其 SSE 后转换成 Silvite 自有的
+SSE 事件协议返回（`text/event-stream`）。前端使用统一事件协议。
 
 事件类型（一行一个 JSON）：
 
@@ -396,11 +407,10 @@ SSE 事件协议返回（`text/event-stream`）。前端永远看不到 MiMo 协
 - **截断防护**：`finish_reason === 'length'` 或结构化 JSON 解析失败 → 绝不
   raw fallback；自动以加倍预算重试一次，仍失败则报
   `OUTPUT_TRUNCATED`（译文过长）。
-- **断流防护**：MiMo SSE 抛错或未携带终止原因就结束时，后端清空临时文本并
+- **断流防护**：上游 SSE 抛错或未携带终止原因就结束时，后端清空临时文本并
   以原预算重试一次；浏览器到 Serverless 的连接中断时，前端同样清空临时文本并
   自动重新请求一次。收到 `final` 后立即停止读取，避免连接尾部异常误伤完整结果。
-- **Thinking 关闭**：翻译请求显式 `thinking: { type: 'disabled' }`（MiMo
-  V2.5 默认开启，会挤占输出预算并把 temperature 强制为 1.0）。
+- **Thinking 关闭**：两种翻译模型的请求均显式发送 `thinking: { type: 'disabled' }`。
 - **输出预算**：`getCompletionBudget()` 按输入长度/图片/模式给出
   4096–32768，`MAX_COMPLETION_TOKENS` 可覆盖（clamp [1024, 65536]），用户
   不可控。
@@ -449,12 +459,13 @@ PDF · DOCX · DOC · PPTX · PPT · XLSX · TXT · Markdown · CSV · SRT / VTT
 
 # 🔐 Security
 
-MiMo API Key **不会进入前端 Bundle**。
+翻译网关及语音识别 API Key **不会进入前端 Bundle**。
 
 API Key 只存在于 EdgeOne Function 的服务器端环境变量：
 
 ```text
 MIMO_API_KEY
+DEEPSEEK_API_KEY
 ```
 
 调用链：
@@ -467,7 +478,7 @@ Browser
    ↓
 EdgeOne Cloud Function
    ↓
-MiMo API
+DeepSeek / GLM 翻译网关；在线 ASR 使用 MiMo
 ```
 
 因此真实 API Key 不会暴露给前端 JavaScript。
@@ -504,7 +515,10 @@ npm ci
 写入：
 
 ```env
-MIMO_API_KEY=your_api_key_here
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
+DEEPSEEK_BASE_URL=https://your-gateway.example/v1
+# 上述地址和 Key 供两个翻译候选共用；请替换为自己的兼容网关地址。
+# 如需在线 MiMo ASR，再配置 MIMO_API_KEY。
 SERVICE_ENABLED=true
 RATE_LIMIT=30
 ```
@@ -621,8 +635,16 @@ dist
 然后在 EdgeOne 项目环境变量中配置：
 
 ```env
-MIMO_API_KEY=...
+DEEPSEEK_API_KEY=...
+DEEPSEEK_BASE_URL=https://your-gateway.example/v1
+# MIMO_API_KEY=...（仅在线语音识别时配置）
 ```
+
+界面仅可选 DeepSeek Flash / GLM 5.3 Flash，默认 DeepSeek。两种翻译请求均关闭思考，
+默认共用 `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`；实际网关模型列表已确认请求名
+`deepseek-flash` 和 `glm-5.3-flash`。
+`DEEPSEEK_BASE_URL` 支持基础地址或完整 `/chat/completions` 地址；Key 仅配置在服务端，
+不要使用 `VITE_` 前缀。设置后重新部署；完整变量和接口说明见 [模型供应商配置](docs/model-providers.md)。
 
 可选变量：
 

@@ -7,9 +7,9 @@ import {
   jsonResponse,
   readJsonBody,
 } from './common.mjs';
+import { relayTranslation } from './translationStream.mjs';
+import { buildProviderRequest, resolveProvider } from '../providers.mjs';
 
-const MIMO_CHAT_COMPLETIONS_URL = 'https://api.xiaomimimo.com/v1/chat/completions';
-const TRANSLATION_MODEL = 'mimo-v2.6-flash';
 const LANGUAGES = new Set(['zh', 'en']);
 const STAGES = new Set(['provisional', 'confirmed']);
 
@@ -45,14 +45,24 @@ export async function onRequest(context) {
     || !LANGUAGES.has(payload.sourceLanguage)
     || !LANGUAGES.has(payload.targetLanguage)
     || !STAGES.has(payload.stage)
+    || payload.utteranceId !== undefined && (typeof payload.utteranceId !== 'string' || !payload.utteranceId || payload.utteranceId.length > 128)
+    || payload.requestId !== undefined && (typeof payload.requestId !== 'string' || !payload.requestId || payload.requestId.length > 160)
     || !Number.isSafeInteger(payload.sequence) || payload.sequence < 1
     || !Number.isSafeInteger(payload.revision) || payload.revision < 1) {
     return jsonResponse({ error: 'INVALID_REQUEST', message: '实时翻译内容或参数无效。' }, 400, headers);
   }
-  if (!env.MIMO_API_KEY) {
-    console.error('Realtime translation is not configured: missing MIMO_API_KEY');
-    return jsonResponse({ error: 'SERVICE_NOT_CONFIGURED', message: '实时翻译服务尚未配置。' }, 500, headers);
+  let provider;
+  try {
+    provider = resolveProvider(payload.model, env);
+  } catch {
+    return jsonResponse({ error: 'SERVICE_NOT_CONFIGURED', message: '翻译服务请求地址或参数配置无效。' }, 500, headers);
   }
+  if (!provider.apiKey) {
+    console.error(`Realtime translation: missing ${provider.apiKeyEnv}`);
+    return jsonResponse({ error: 'SERVICE_NOT_CONFIGURED', message: `${provider.label} 翻译服务尚未配置。` }, 500, headers);
+  }
+  headers['X-Translation-Provider'] = provider.id;
+  headers['X-Translation-Model'] = provider.model;
 
   const messages = buildRealtimeTranslationMessages({
     sourceText: payload.sourceText,
@@ -65,30 +75,31 @@ export async function onRequest(context) {
     preserveNames: payload.preserveNames !== false,
     stage: payload.stage,
   });
+  const upstream = buildProviderRequest(provider, { messages, budget: 1024, temperature: 0.2 });
 
   let upstreamResponse;
+  const upstreamController = new AbortController();
+  const requestSignal = request.signal;
+  const abortUpstream = () => upstreamController.abort(requestSignal?.reason);
+  const timer = setTimeout(() => upstreamController.abort(new Error('Translation timeout')), 28_000);
+  const cleanup = () => { clearTimeout(timer); requestSignal?.removeEventListener('abort', abortUpstream); };
+  if (requestSignal?.aborted) abortUpstream();
+  else requestSignal?.addEventListener('abort', abortUpstream, { once: true });
   try {
-    upstreamResponse = await fetch(MIMO_CHAT_COMPLETIONS_URL, {
+    upstreamResponse = await fetch(upstream.url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.MIMO_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: TRANSLATION_MODEL,
-        messages,
-        max_completion_tokens: 1024,
-        temperature: 0.2,
-        thinking: { type: 'disabled' },
-        stream: false,
-      }),
-      signal: request.signal,
+      headers: upstream.headers,
+      body: JSON.stringify(upstream.body),
+      signal: upstreamController.signal,
     });
   } catch {
+    cleanup();
     return jsonResponse({ error: 'TRANSLATION_NETWORK_ERROR', message: '无法连接实时翻译服务，请检查网络后重试。' }, 502, headers);
   }
 
-  if (!upstreamResponse.ok) {
+  if (!upstreamResponse.ok || !upstreamResponse.body) {
+    cleanup();
+    void upstreamResponse.body?.cancel().catch(() => undefined);
     const rateLimited = upstreamResponse.status === 429;
     if (!rateLimited) console.error('Realtime translation upstream returned status:', upstreamResponse.status);
     return jsonResponse({
@@ -97,26 +108,10 @@ export async function onRequest(context) {
     }, rateLimited ? 429 : 502, headers);
   }
 
-  let upstreamPayload;
-  try {
-    upstreamPayload = await upstreamResponse.json();
-  } catch {
-    return jsonResponse({ error: 'INVALID_UPSTREAM_RESPONSE', message: '实时翻译返回格式异常，请重试。' }, 502, headers);
-  }
-  const content = upstreamPayload?.choices?.[0]?.message?.content;
-  const translation = typeof content === 'string'
-    ? content.trim()
-    : Array.isArray(content)
-      ? content.map((part) => typeof part?.text === 'string' ? part.text : '').join('').trim()
-      : '';
-  if (!translation || looksLikeStructuredProtocol(translation)) {
-    return jsonResponse({ error: 'INVALID_TRANSLATION', message: '实时翻译结果为空或格式异常，请重试。' }, 502, headers);
-  }
-
-  return jsonResponse({
-    sequence: payload.sequence,
-    revision: payload.revision,
-    stage: payload.stage,
-    translation,
-  }, 200, headers);
+  const streamHeaders = { ...headers, 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' };
+  const identity = { sequence: payload.sequence, revision: payload.revision, stage: payload.stage,
+    utteranceId: payload.utteranceId || `realtime-${payload.sequence}`,
+    requestId: payload.requestId || `legacy-${payload.sequence}-${payload.revision}` };
+  const body = relayTranslation(upstreamResponse.body, identity, upstreamController, cleanup, looksLikeStructuredProtocol);
+  return new Response(body, { status: 200, headers: streamHeaders });
 }

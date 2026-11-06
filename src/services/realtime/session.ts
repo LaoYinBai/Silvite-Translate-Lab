@@ -1,25 +1,35 @@
-import type { RealtimeAudioRequest, RealtimeTranslationRequest } from '../../api/realtimeClient';
+import type { RealtimeAudioRequest, RealtimeTranslationRequest, RealtimeTranslationResult } from '../../api/realtimeClient';
 import { REALTIME_CONFIG, type RealtimeSourceLanguage, type RealtimeTargetLanguage } from './config';
 import { encodeWavDataUrl, RealtimeAudioChunker, resampleToMono16k, type AudioCapture, type RealtimeAudioChunk } from './audio';
-import type { ASRProvider, TranslationProvider } from './providers';
+import type { ASRPreparation, ASRProvider, TranslationProvider } from './providers';
 import { detectRealtimeSourceLanguage, mergeTranscriptOverlap, resolveRealtimeTarget } from './transcript';
 import type { RetryNotice } from './retry';
+import { RealtimeTranslationScheduler } from './translationScheduler';
 
-export type RealtimeStatus = 'idle' | 'requesting-microphone' | 'listening' | 'recognizing' | 'translating'
+export type RealtimeStatus = 'idle' | 'preparing-model' | 'requesting-microphone' | 'listening' | 'recognizing' | 'translating'
   | 'backpressure' | 'network-reconnecting' | 'network-disconnected' | 'rate-limited' | 'paused'
-  | 'stopping' | 'error';
+  | 'recognition-failed' | 'stopping' | 'error';
+
+export type SubtitleTranslationStatus = 'off' | 'queued' | 'streaming' | 'draft' | 'confirmed' | 'error';
 
 export interface RealtimeSubtitleSegment {
   id: string;
   sequence: number;
   startTime: number;
   endTime: number;
+  capturedAt: number;
   sourceText: string;
+  stableSourceText: string;
   translatedText: string;
   sourceLanguage: 'zh' | 'en';
   targetLanguage: 'zh' | 'en';
   status: 'provisional' | 'confirmed';
   revision: number;
+  translationStatus: SubtitleTranslationStatus;
+  translationError: string | null;
+  translationSourceRevision: number | null;
+  translationRevision: number;
+  translationRequestId: string | null;
 }
 
 export interface RealtimeMetrics {
@@ -42,22 +52,35 @@ export interface RealtimeSessionState {
   segments: RealtimeSubtitleSegment[];
   metrics: RealtimeMetrics;
   isListening: boolean;
+  preparation: ASRPreparation | null;
+  translationPending: number;
+  recognitionPending: number;
+  isPaused: boolean;
+  isStarting: boolean;
 }
 
 export interface RealtimeSessionOptions {
   capture: AudioCapture;
   asr: ASRProvider;
   translation: TranslationProvider;
+  model?: RealtimeTranslationRequest['model'];
   sourceLanguage: RealtimeSourceLanguage;
   targetLanguage: RealtimeTargetLanguage;
   context?: string;
   terminology?: string;
   preserveNames?: boolean;
+  transcriptionOnly?: boolean;
   onChange?: (state: RealtimeSessionState) => void;
   now?: () => number;
 }
 
-interface QueuedChunk extends RealtimeAudioChunk { sequence: number; capturedAt: number }
+interface QueuedChunk extends RealtimeAudioChunk {
+  sequence: number;
+  capturedAt: number;
+  baseText?: string;
+  committedPrefix?: string;
+  stableReference?: string;
+}
 
 const emptyMetrics = (): RealtimeMetrics => ({
   captureTimestamp: null, chunkDurationMs: 0, asrLatencyMs: null,
@@ -66,320 +89,449 @@ const emptyMetrics = (): RealtimeMetrics => ({
   discardedStaleResponses: 0, retryCount: 0, rateLimitCount: 0,
 });
 
+function joinSource(left: string, right: string) {
+  if (!left) return right;
+  if (!right) return left;
+  return left + (/\p{Script=Han}$/u.test(left) || /^\p{Script=Han}/u.test(right) ? '' : ' ') + right;
+}
+
+function sharedPrefix(previous: string, next: string) {
+  let length = 0;
+  while (length < previous.length && length < next.length && previous[length] === next[length]) length++;
+  let prefix = next.slice(0, length);
+  if (length < next.length && /[A-Za-z]$/.test(prefix)) prefix = prefix.replace(/[A-Za-z]+$/, '');
+  if (/[\uD800-\uDBFF]$/.test(prefix)) prefix = prefix.slice(0, -1);
+  return prefix;
+}
+
+function boundedPrefix(text: string) {
+  const maximum = REALTIME_CONFIG.maximumUtteranceCharacters;
+  let length = maximum;
+  const candidates = text.slice(0, maximum).matchAll(/[。！？.!?;；,，\s]/g);
+  for (const match of candidates) if (match.index >= maximum / 2) length = match.index + match[0].length;
+  if (/[\uD800-\uDBFF]/.test(text[length - 1])) length--;
+  return length;
+}
+
 export class RealtimeSessionEngine {
   private readonly options: RealtimeSessionOptions;
-  private state: RealtimeSessionState = { status: 'idle', error: null, current: null, segments: [], metrics: emptyMetrics(), isListening: false };
-  private readonly chunker = new RealtimeAudioChunker();
+  private readonly now: () => number;
+  private state: RealtimeSessionState = {
+    status: 'idle', error: null, current: null, segments: [], metrics: emptyMetrics(),
+    isListening: false, preparation: null, translationPending: 0, recognitionPending: 0, isPaused: false, isStarting: false,
+  };
+  private chunker = new RealtimeAudioChunker();
+  private translations: RealtimeTranslationScheduler;
+  private startController: AbortController | null = null;
+  private activeASR: AbortController | null = null;
   private queue: QueuedChunk[] = [];
   private sequence = 0;
-  private currentTranscript = '';
-  private currentBaseTranscript = '';
-  private currentSegmentSequence = 0;
-  private currentRevision = 0;
-  private activeTranslation: AbortController | null = null;
-  private activeASR: AbortController | null = null;
-  private lastProvisionalTranslationAt = 0;
+  private generation = 0;
+  private utteranceCounter = 0;
+  private requestCounter = 0;
+  private committedTail = '';
   private pumping = false;
   private pausedByUser = false;
+  private pauseToken = 0;
+  private asrBlocked = false;
+  private asrFailure: { status: RealtimeStatus; error: string } | null = null;
+  private stopping = false;
+  private stopPromise: Promise<void> | null = null;
   private disposed = false;
   private drainWaiters: Array<() => void> = [];
-  private readonly now: () => number;
   private networkHandlers: { online: () => void; offline: () => void } | null = null;
 
-  constructor(options: RealtimeSessionOptions) { this.options = options; this.now = options.now || (() => performance.now()); }
+  constructor(options: RealtimeSessionOptions) {
+    this.options = options;
+    this.now = options.now || (() => performance.now());
+    this.translations = new RealtimeTranslationScheduler(REALTIME_CONFIG.provisionalTranslationIntervalMs, this.now);
+  }
   getSnapshot = () => this.state;
 
-  updateSettings(settings: Pick<RealtimeSessionOptions, 'sourceLanguage' | 'targetLanguage' | 'context' | 'terminology' | 'preserveNames'>) {
-    if (this.state.isListening || this.disposed) return;
+  updateSettings(settings: Partial<Pick<RealtimeSessionOptions, 'model' | 'sourceLanguage' | 'targetLanguage' | 'context' | 'terminology' | 'preserveNames' | 'asr' | 'transcriptionOnly'>>) {
+    if (this.state.isListening || this.startController || this.stopping || this.queue.length || this.state.translationPending || this.disposed) return;
+    if (settings.asr && settings.asr !== this.options.asr) this.options.asr.dispose?.();
     Object.assign(this.options, settings);
   }
 
   async start() {
-    if (this.state.isListening || this.disposed) return;
+    if (this.state.isListening || this.startController || this.stopping || this.queue.length || this.state.translationPending || this.disposed) return;
+    const controller = new AbortController();
+    this.startController = controller;
+    this.generation++;
+    this.translations.dispose();
+    this.translations = new RealtimeTranslationScheduler(REALTIME_CONFIG.provisionalTranslationIntervalMs, this.now);
+    this.chunker = new RealtimeAudioChunker(this.options.asr.chunkOptions);
     this.queue = [];
     this.sequence = 0;
-    this.currentTranscript = '';
-    this.currentBaseTranscript = '';
-    this.lastProvisionalTranslationAt = 0;
-    this.currentSegmentSequence = 0;
-    this.currentRevision = 0;
+    this.utteranceCounter = 0;
+    this.committedTail = '';
     this.pausedByUser = false;
-    this.patch({ status: 'requesting-microphone', error: null, current: null, segments: [], metrics: emptyMetrics(), isListening: false });
+    this.pauseToken++;
+    this.asrBlocked = false;
+    this.asrFailure = null;
+    this.patch({ status: this.options.asr.prepare ? 'preparing-model' : 'requesting-microphone',
+      error: null, preparation: null, current: null, segments: [], metrics: emptyMetrics(), isListening: false });
     try {
+      // Keep Web Audio unlocking in the original tap, before asynchronous model loading.
+      await this.options.capture.prepare?.();
+      if (controller.signal.aborted || this.disposed) return;
+      await this.options.asr.prepare?.((preparation) => {
+        if (!controller.signal.aborted && !this.disposed) this.patch({ preparation });
+      }, controller.signal);
+      if (controller.signal.aborted || this.disposed) return;
+      this.patch({ status: 'requesting-microphone' });
       await this.options.capture.start((samples, sampleRate, startTime) => {
         if (this.disposed || this.pausedByUser) return;
-        const normalized = resampleToMono16k(samples, sampleRate);
-        const chunks = this.chunker.push(normalized, startTime);
-        for (const chunk of chunks) this.enqueue(chunk);
+        for (const chunk of this.chunker.push(resampleToMono16k(samples, sampleRate), startTime)) this.enqueue(chunk);
       });
-      if (this.disposed) {
-        await this.options.capture.stop(false);
-        return;
-      }
-      this.networkHandlers = {
-        online: () => {
-          if (this.state.status !== 'network-disconnected') return;
-          this.patch({ status: 'listening', error: null });
-          void this.retryPending();
-        },
-        offline: () => this.patch({ status: 'network-disconnected', error: '网络已断开，当前语音片段已保留。恢复连接后可重试。' }),
-      };
-      if (typeof window !== 'undefined') {
-        window.addEventListener('online', this.networkHandlers.online);
-        window.addEventListener('offline', this.networkHandlers.offline);
-      }
+      if (this.disposed || controller.signal.aborted) { await this.options.capture.stop(false); return; }
+      this.installNetworkHandlers();
       this.patch({ status: 'listening', isListening: true });
+      this.syncCapture();
     } catch (error) {
-      this.patch({ status: 'error', isListening: false, error: this.permissionMessage(error) });
+      if (!this.disposed && !controller.signal.aborted) {
+        this.patch({ status: 'error', isListening: false, error: this.permissionMessage(error) });
+      }
       await this.options.capture.stop(false).catch(() => undefined);
+    } finally {
+      if (controller.signal.aborted) await this.options.capture.stop(false).catch(() => undefined);
+      if (this.startController === controller) this.startController = null;
+      if (controller.signal.aborted) this.refreshStatus();
+      else this.patch({});
     }
   }
 
   async pause() {
-    if (!this.state.isListening) return;
+    if (!this.state.isListening || this.pausedByUser || this.stopping) return;
+    const token = ++this.pauseToken;
+    const generation = this.generation;
     this.pausedByUser = true;
     this.options.capture.setPaused(true);
-    const tail = this.chunker.flush();
-    for (const chunk of tail) this.enqueue(chunk);
     this.patch({ status: 'paused' });
+    for (const chunk of this.chunker.flush()) this.enqueue(chunk);
     await this.waitForDrain();
-    await this.confirmCurrent();
+    if (token === this.pauseToken && generation === this.generation && this.pausedByUser && !this.stopping
+      && !this.queue.length && !this.disposed) { this.confirmCurrent(); this.committedTail = ''; }
+    this.refreshStatus();
   }
 
   async resume() {
-    if (!this.state.isListening || !this.pausedByUser) return;
+    if (!this.state.isListening || !this.pausedByUser || this.stopping) return;
     this.pausedByUser = false;
-    this.options.capture.setPaused(false);
-    this.patch({ status: 'listening', error: null });
+    this.pauseToken++;
+    this.syncCapture();
+    this.refreshStatus();
   }
 
   async retryPending() {
-    if (this.disposed) return;
-    this.patch({ status: 'listening', error: null });
-    if (this.state.current?.status === 'confirmed') {
-      await this.confirmCurrent();
-      return;
+    if (this.disposed || this.startController) return;
+    this.asrBlocked = false;
+    this.asrFailure = null;
+    this.patch({ error: null });
+    this.retryTranslation();
+    void this.pump();
+    await this.waitForDrain();
+    if (!this.queue.length && (!this.state.isListening || this.pausedByUser)) {
+      this.confirmCurrent();
+      this.committedTail = '';
     }
-    this.pump();
+    this.syncCapture();
+    this.refreshStatus();
   }
 
-  async stop() {
-    if (!this.state.isListening && this.state.status === 'idle') return;
+  retryTranslation(id?: string) {
+    if (this.disposed || this.options.transcriptionOnly) return;
+    const failed = [...this.state.segments, ...(this.state.current ? [this.state.current] : [])]
+      .filter((segment) => segment.translationStatus === 'error' && (!id || segment.id === id));
+    for (const segment of failed) this.scheduleTranslation(segment, segment.status);
+  }
+
+  stop(): Promise<void> {
+    if (this.stopPromise) return this.stopPromise;
+    this.stopPromise = this.finishCapture().finally(() => { this.stopPromise = null; });
+    return this.stopPromise;
+  }
+
+  private async finishCapture() {
+    if (this.disposed || !this.state.isListening && !this.startController && !this.queue.length) return;
+    this.stopping = true;
+    this.pauseToken++;
+    this.startController?.abort(new DOMException('Session stopped', 'AbortError'));
     this.patch({ status: 'stopping' });
     await this.options.capture.stop(true).catch(() => undefined);
     for (const chunk of this.chunker.flush()) this.enqueue(chunk);
+    this.patch({ isListening: false });
     await this.waitForDrain();
-    await this.confirmCurrent();
+    if (!this.queue.length && !this.disposed) { this.confirmCurrent(); this.committedTail = ''; }
     this.removeNetworkHandlers();
-    this.patch({ status: 'idle', isListening: false });
+    await this.translations.whenIdle();
+    this.stopping = false;
+    this.refreshStatus();
   }
 
   async dispose() {
     if (this.disposed) return;
     this.disposed = true;
-    this.activeTranslation?.abort(new DOMException('Session disposed', 'AbortError'));
+    this.startController?.abort(new DOMException('Session disposed', 'AbortError'));
     this.activeASR?.abort(new DOMException('Session disposed', 'AbortError'));
+    this.translations.dispose();
     this.queue = [];
+    this.options.asr.dispose?.();
     this.removeNetworkHandlers();
-    await this.options.capture.stop(false).catch(() => undefined);
     this.notifyDrain();
+    await this.options.capture.stop(false).catch(() => undefined);
   }
 
   private enqueue(chunk: RealtimeAudioChunk) {
-    if (this.queue.length >= REALTIME_CONFIG.maxQueuedAudioChunks) {
-      this.options.capture.setPaused(true);
-      this.patch({ status: 'backpressure', error: '语音请求已排满，已暂停采集以避免丢失内容。' });
-      return;
-    }
-    const sequence = ++this.sequence;
-    this.queue.push({ ...chunk, sequence, capturedAt: this.now() });
+    if (this.disposed) return;
+    // Pausing starts before the configured depth is reached. Preserve an already
+    // delivered worklet tail instead of discarding recorded speech.
+    this.queue.push({ ...chunk, sequence: ++this.sequence, capturedAt: this.now() });
     this.patch({ metrics: { ...this.state.metrics, chunkDurationMs: chunk.durationMs } });
-    if (this.queue.length >= REALTIME_CONFIG.maxQueuedAudioChunks - 1) {
-      this.options.capture.setPaused(true);
-      this.patch({ status: 'backpressure', error: '正在处理已采集语音…' });
-    }
-    this.pump();
+    this.syncCapture();
+    this.refreshStatus();
+    void this.pump();
   }
 
   private async pump() {
-    if (this.pumping || this.disposed) return;
+    if (this.pumping || this.disposed || this.asrBlocked) return;
     this.pumping = true;
     try {
-      while (this.queue.length && !this.disposed) {
-        const queued = this.queue.shift()!;
-        if (this.queue.length <= REALTIME_CONFIG.resumeQueueDepth && !this.pausedByUser && this.state.isListening) {
-          this.options.capture.setPaused(false);
-        }
-        await this.processChunk(queued);
-        if (this.state.status === 'network-disconnected' || this.state.status === 'rate-limited') {
-          this.queue.unshift(queued);
-          break;
-        }
+      while (this.queue.length && !this.disposed && !this.asrBlocked) {
+        const chunk = this.queue.shift()!;
+        this.syncCapture();
+        const success = await this.processChunk(chunk);
+        if (!success && !this.disposed) { this.queue.unshift(chunk); this.asrBlocked = true; }
+        this.syncCapture();
       }
     } finally {
       this.pumping = false;
+      this.patch({});
       this.notifyDrain();
-      if (!this.queue.length && !this.pausedByUser && this.state.isListening && ['recognizing', 'translating', 'backpressure'].includes(this.state.status)) {
-        this.patch({ status: 'listening', error: null });
-      }
+      this.refreshStatus();
     }
   }
 
-  private async processChunk(chunk: QueuedChunk) {
-    this.patch({ status: 'recognizing', error: null });
-    const audioDataUrl = await encodeWavDataUrl(chunk.samples);
-    const request: RealtimeAudioRequest = { audioDataUrl, language: this.options.sourceLanguage, sequence: chunk.sequence };
+  private async processChunk(chunk: QueuedChunk): Promise<boolean> {
     const controller = new AbortController();
+    const generation = this.generation;
     this.activeASR = controller;
-    let chunkTranscript = '';
+    const live = () => !this.disposed && !controller.signal.aborted && generation === this.generation && this.activeASR === controller;
+    if (chunk.baseText === undefined) {
+      chunk.committedPrefix = this.committedTail;
+      chunk.stableReference = this.state.current?.sourceText || '';
+      chunk.baseText = joinSource(this.committedTail, chunk.stableReference);
+    }
+    this.refreshStatus();
+    this.patch({ error: null });
     try {
+      const request: RealtimeAudioRequest = {
+        audioDataUrl: await encodeWavDataUrl(chunk.samples), language: this.options.sourceLanguage, sequence: chunk.sequence,
+      };
       const result = await this.options.asr.transcribe(request, {
-        onPartial: (event, timing) => {
-          if (!this.isLiveSequence(chunk.sequence)) { this.countStale(); return; }
-          chunkTranscript = event.text;
-          this.acceptTranscript(chunk, chunkTranscript, event.revision, timing.firstResponseMs);
-        },
+        onPartial: (event) => { if (live()) this.acceptTranscript(chunk, event.text); else this.countStale(); },
         onReset: () => {
-          if (this.isLiveSequence(chunk.sequence)) this.patch({ current: this.state.current ? { ...this.state.current, translatedText: '' } : null });
+          if (live() && this.state.current) {
+            this.translations.discardDraft(this.state.current.id);
+            this.patch({ current: { ...this.state.current, translationRequestId: null,
+              translationStatus: this.options.transcriptionOnly ? 'off' : 'draft', translationError: null } });
+          }
         },
-        onRetry: (notice) => this.onRetry(notice),
+        onRetry: (notice) => { if (live()) this.onASRRetry(notice); },
       }, controller.signal);
-      if (!this.isLiveSequence(chunk.sequence)) { this.countStale(); return; }
-      chunkTranscript = result.text;
-      this.patch({ metrics: {
-        ...this.state.metrics,
-        asrLatencyMs: result.responseLatencyMs,
-        asrFirstResponseLatencyMs: result.firstResponseMs,
-      } });
-      this.acceptTranscript(chunk, chunkTranscript, result.revision, result.firstResponseMs);
-      if (chunk.reason === 'silence' || chunk.reason === 'stop') await this.confirmCurrent();
+      if (!live()) { this.countStale(); return false; }
+      this.patch({ metrics: { ...this.state.metrics, asrLatencyMs: result.responseLatencyMs, asrFirstResponseLatencyMs: result.firstResponseMs }, error: null });
+      this.acceptTranscript(chunk, result.text);
+      const segment = this.state.current;
+      const boundary = chunk.reason !== 'window' || !!segment && (
+        /[。！？.!?][”’"'）)\]]*$/u.test(segment.sourceText)
+        || segment.endTime - segment.startTime >= REALTIME_CONFIG.maximumUtteranceMs);
+      this.confirmCurrent(boundary);
+      if (chunk.reason !== 'window') this.committedTail = '';
+      return true;
     } catch (error) {
-      if (this.disposed || (error instanceof DOMException && error.name === 'AbortError')) return;
+      if (!live()) return false;
       const rateLimited = typeof error === 'object' && error !== null && 'status' in error && error.status === 429;
-      this.patch({
-        status: rateLimited ? 'rate-limited' : 'network-disconnected',
-        error: error instanceof Error ? error.message : '语音识别失败，当前片段已保留，可重试。',
-      });
+      this.asrFailure = { status: rateLimited ? 'rate-limited' : this.options.asr.execution === 'local' ? 'recognition-failed' : 'network-disconnected',
+        error: error instanceof Error ? error.message : '语音识别失败，当前音频已保留，可重试。' };
+      this.patch(this.asrFailure);
+      return false;
     } finally {
       if (this.activeASR === controller) this.activeASR = null;
     }
   }
 
-  private acceptTranscript(chunk: QueuedChunk, text: string, revision: number, firstResponseMs: number) {
+  private acceptTranscript(chunk: QueuedChunk, text: string) {
     if (!text.trim()) return;
-    const sequenceChanged = this.currentSegmentSequence !== chunk.sequence;
-    if (sequenceChanged) {
-      this.currentSegmentSequence = chunk.sequence;
-      this.currentRevision = 0;
-      this.currentBaseTranscript = this.currentTranscript;
+    let merged = mergeTranscriptOverlap(chunk.baseText || '', text);
+    if (chunk.committedPrefix && merged.startsWith(chunk.committedPrefix)) merged = merged.slice(chunk.committedPrefix.length).trim();
+    if (!merged) return;
+    const previous = this.state.current;
+    if (previous?.sourceText === merged) {
+      const current = { ...previous, endTime: chunk.endTime, sequence: chunk.sequence };
+      this.patch({ current });
+      if (!this.options.transcriptionOnly && !current.translationRequestId && merged.length >= REALTIME_CONFIG.minimumTranslationCharacters
+        && merged.length <= REALTIME_CONFIG.maximumUtteranceCharacters) this.scheduleTranslation(current, 'provisional');
+      return;
     }
-    this.currentTranscript = mergeTranscriptOverlap(this.currentBaseTranscript, text);
-    this.currentRevision = Math.max(this.currentRevision + 1, revision);
-    const detected = detectRealtimeSourceLanguage(this.currentTranscript);
-    const target = resolveRealtimeTarget(detected, this.options.targetLanguage);
+    const sourceLanguage = this.options.sourceLanguage === 'auto' ? detectRealtimeSourceLanguage(merged) : this.options.sourceLanguage;
     const segment: RealtimeSubtitleSegment = {
-      id: `realtime-${chunk.sequence}`,
-      sequence: chunk.sequence,
-      startTime: this.state.current?.startTime ?? chunk.startTime,
-      endTime: chunk.endTime,
-      sourceText: this.currentTranscript,
-      translatedText: '',
-      sourceLanguage: detected,
-      targetLanguage: target,
-      status: 'provisional',
-      revision: this.currentRevision,
+      id: previous?.id || this.nextUtteranceId(), sequence: chunk.sequence,
+      startTime: previous?.startTime ?? chunk.startTime, endTime: chunk.endTime,
+      capturedAt: previous?.capturedAt ?? chunk.capturedAt, sourceText: merged,
+      stableSourceText: sharedPrefix(chunk.stableReference || '', merged),
+      translatedText: previous?.translatedText || '', sourceLanguage,
+      targetLanguage: resolveRealtimeTarget(sourceLanguage, this.options.targetLanguage),
+      status: 'provisional', revision: (previous?.revision || 0) + 1,
+      translationStatus: this.options.transcriptionOnly ? 'off' : 'draft', translationError: null,
+      translationSourceRevision: previous?.translationSourceRevision ?? null,
+      translationRevision: previous?.translationRevision || 0, translationRequestId: null,
     };
-    this.patch({
-      status: 'translating', current: segment,
-      metrics: { ...this.state.metrics, captureTimestamp: chunk.capturedAt, revisions: this.state.metrics.revisions + 1 },
+    this.patch({ current: segment, metrics: { ...this.state.metrics, captureTimestamp: segment.capturedAt, revisions: this.state.metrics.revisions + 1 } });
+    if (!this.options.transcriptionOnly && merged.length >= REALTIME_CONFIG.minimumTranslationCharacters
+      && merged.length <= REALTIME_CONFIG.maximumUtteranceCharacters) this.scheduleTranslation(segment, 'provisional');
+  }
+
+  private confirmCurrent(force = true) {
+    while (this.state.current?.sourceText.trim()) {
+      const segment = this.state.current;
+      const oversized = segment.sourceText.length > REALTIME_CONFIG.maximumUtteranceCharacters;
+      if (!force && !oversized) return;
+      const length = oversized ? boundedPrefix(segment.sourceText) : segment.sourceText.length;
+      const sourceText = segment.sourceText.slice(0, length).trim();
+      const remainder = segment.sourceText.slice(length).trim();
+      const endTime = segment.startTime + (segment.endTime - segment.startTime) * length / segment.sourceText.length;
+      const confirmed: RealtimeSubtitleSegment = {
+        ...segment, sourceText, stableSourceText: sourceText, endTime, revision: segment.revision + 1,
+        translatedText: oversized ? '' : segment.translatedText, status: 'confirmed',
+        translationStatus: this.options.transcriptionOnly ? 'off' : 'queued', translationError: null, translationRequestId: null,
+      };
+      const current: RealtimeSubtitleSegment | null = remainder ? {
+        ...segment, id: this.nextUtteranceId(), startTime: endTime, sourceText: remainder, stableSourceText: '',
+        translatedText: '', revision: 1, translationStatus: this.options.transcriptionOnly ? 'off' : 'draft',
+        translationSourceRevision: null, translationRevision: 0, translationRequestId: null, translationError: null,
+      } : null;
+      this.committedTail = Array.from(joinSource(this.committedTail, sourceText)).slice(-160).join('');
+      this.patch({ segments: [...this.state.segments, confirmed], current });
+      if (!this.options.transcriptionOnly) this.scheduleTranslation(confirmed, 'confirmed');
+      this.syncCapture();
+      if (!force && current && current.sourceText.length <= REALTIME_CONFIG.maximumUtteranceCharacters) {
+        this.scheduleTranslation(current, 'provisional');
+      }
+    }
+  }
+
+  private scheduleTranslation(snapshot: RealtimeSubtitleSegment, stage: 'provisional' | 'confirmed') {
+    if (this.disposed || this.options.transcriptionOnly) return;
+    const generation = this.generation;
+    const requestId = snapshot.id + '-t' + ++this.requestCounter;
+    const segment = { ...snapshot, translationStatus: 'queued' as const, translationRequestId: requestId, translationError: null };
+    let retainedDraft = { text: segment.translatedText, sourceRevision: segment.translationSourceRevision };
+    let generationDraft: typeof retainedDraft | null = null;
+    let runCount = 0;
+    this.replaceSegment(segment);
+    const currentSegment = () => this.state.current?.id === segment.id ? this.state.current : this.state.segments.find((item) => item.id === segment.id);
+    const live = () => !this.disposed && generation === this.generation && currentSegment()?.revision === segment.revision
+      && currentSegment()?.translationRequestId === requestId;
+    const change = (partial: Partial<RealtimeSubtitleSegment>) => {
+      if (!live()) { this.countStale(); return; }
+      this.replaceSegment({ ...currentSegment()!, ...partial });
+    };
+    this.translations.submit({
+      utteranceId: segment.id, revision: segment.revision, stage,
+      run: (signal, handlers) => this.options.translation.translate(this.translationRequest(segment, stage, `${requestId}-g${++runCount}`), signal,
+        (notice) => {
+          if (!live()) return;
+          this.recordRetry(notice);
+          change({ translationError: `正在重试（${notice.attempt}/${notice.maxRetries}）…` });
+        }, handlers),
+      onStart: () => change({ translationStatus: 'streaming', translationRevision: (currentSegment()?.translationRevision || 0) + 1 }),
+      onReset: (reason) => {
+        if (reason !== 'invalid' && generationDraft) retainedDraft = generationDraft;
+        generationDraft = null;
+        // Reset the new generation's accumulator without discarding the last
+        // readable draft. Invalid protocol text never becomes the fallback.
+        change({ translatedText: retainedDraft.text, translationSourceRevision: retainedDraft.sourceRevision, translationError: null });
+      },
+      onDelta: (text) => {
+        generationDraft = { text, sourceRevision: segment.revision };
+        change({ translatedText: text, translationStatus: 'streaming', translationSourceRevision: segment.revision });
+      },
+      onComplete: (result: RealtimeTranslationResult) => {
+        if (!live()) { this.countStale(); return; }
+        if (result.sequence !== segment.sequence || result.revision !== segment.revision || result.stage !== stage || !result.translation?.trim()) {
+          change({ translationStatus: 'error', translationError: '译文与当前语段不匹配，可重试。' }); return;
+        }
+        change({ translatedText: result.translation, translationSourceRevision: segment.revision,
+          translationStatus: stage === 'confirmed' ? 'confirmed' : 'draft', translationError: null });
+        this.patch({ metrics: { ...this.state.metrics, translationLatencyMs: result.latencyMs, endToEndSubtitleLatencyMs: this.now() - segment.capturedAt } });
+        this.syncCapture();
+        this.refreshStatus();
+      },
+      onError: (error) => {
+        if (generationDraft) retainedDraft = generationDraft;
+        change({ translatedText: retainedDraft.text, translationSourceRevision: retainedDraft.sourceRevision,
+          translationStatus: 'error', translationError: error instanceof Error ? error.message : '译文生成失败，可重试。' });
+        this.syncCapture();
+        this.refreshStatus();
+      },
     });
-    this.translateProvisional(segment, firstResponseMs);
   }
 
-  private async translateProvisional(segment: RealtimeSubtitleSegment, firstResponseMs: number) {
-    const now = this.now();
-    if (segment.sourceText.trim().length < REALTIME_CONFIG.minimumTranslationCharacters
-      || now - this.lastProvisionalTranslationAt < REALTIME_CONFIG.provisionalTranslationIntervalMs) return;
-    this.lastProvisionalTranslationAt = now;
-    this.activeTranslation?.abort(new DOMException('Superseded revision', 'AbortError'));
-    const controller = new AbortController(); this.activeTranslation = controller;
-    const request = this.translationRequest(segment, 'provisional');
-    try {
-      const result = await this.options.translation.translate(request, controller.signal, (notice) => this.onRetry(notice));
-      if (!this.isCurrentRevision(segment, controller)) { this.countStale(); return; }
-      this.patch({
-        status: this.state.isListening ? 'listening' : this.state.status,
-        current: { ...segment, translatedText: result.translation },
-        metrics: { ...this.state.metrics, translationLatencyMs: result.latencyMs,
-          endToEndSubtitleLatencyMs: this.state.metrics.captureTimestamp === null
-            ? null : this.now() - this.state.metrics.captureTimestamp },
-      });
-    } catch (error) {
-      if (!controller.signal.aborted) this.patch({ error: error instanceof Error ? error.message : '实时翻译暂时失败。' });
-    } finally {
-      if (this.activeTranslation === controller) this.activeTranslation = null;
-    }
-    void firstResponseMs;
-  }
-
-  private async confirmCurrent() {
-    const segment = this.state.current;
-    if (!segment?.sourceText.trim()) return;
-    this.activeTranslation?.abort(new DOMException('Final correction', 'AbortError'));
-    const controller = new AbortController(); this.activeTranslation = controller;
-    const confirmedRevision = segment.revision + 1;
-    const confirmed = { ...segment, status: 'confirmed' as const, revision: confirmedRevision };
-    this.currentTranscript = '';
-    this.currentBaseTranscript = '';
-    this.currentSegmentSequence = 0;
-    this.currentRevision = 0;
-    this.patch({ status: 'translating', current: confirmed });
-    try {
-      const result = await this.options.translation.translate(this.translationRequest(confirmed, 'confirmed'), controller.signal,
-        (notice) => this.onRetry(notice));
-      if (this.disposed || controller.signal.aborted || this.state.current?.sequence !== segment.sequence
-        || this.state.current.revision !== confirmedRevision) { this.countStale(); return; }
-      const finalSegment = { ...confirmed, translatedText: result.translation };
-      this.patch({
-        segments: [...this.state.segments, finalSegment], current: null,
-        status: this.state.isListening ? 'listening' : this.state.status,
-        metrics: { ...this.state.metrics, translationLatencyMs: result.latencyMs,
-          endToEndSubtitleLatencyMs: this.state.metrics.captureTimestamp === null
-            ? null : this.now() - this.state.metrics.captureTimestamp },
-      });
-    } catch (error) {
-      if (controller.signal.aborted) return;
-      // Keep the source and provisional translation visible; the segment is not silently lost.
-      this.patch({ current: confirmed, status: 'network-disconnected', error: error instanceof Error ? error.message : '最终字幕校正失败，可重试。' });
-    } finally {
-      if (this.activeTranslation === controller) this.activeTranslation = null;
-    }
-  }
-
-  private translationRequest(segment: RealtimeSubtitleSegment, stage: 'provisional' | 'confirmed'): RealtimeTranslationRequest {
-    const confirmedContext = this.state.segments.slice(-REALTIME_CONFIG.recentContextSegments).map((item) => ({
-      source: item.sourceText, translation: item.translatedText,
+  private translationRequest(segment: RealtimeSubtitleSegment, stage: 'provisional' | 'confirmed', requestId: string): RealtimeTranslationRequest {
+    const position = this.state.segments.findIndex((item) => item.id === segment.id);
+    const previous = position < 0 ? this.state.segments : this.state.segments.slice(0, position);
+    const confirmedContext = previous.slice(-REALTIME_CONFIG.recentContextSegments).map((item) => ({
+      source: item.sourceText, translation: item.translationStatus === 'confirmed' ? item.translatedText : '',
       source_language: item.sourceLanguage, target_language: item.targetLanguage,
     }));
     return {
-      sourceText: segment.sourceText, sourceLanguage: segment.sourceLanguage, targetLanguage: segment.targetLanguage,
+      utteranceId: segment.id, requestId, sourceText: segment.sourceText,
+      model: this.options.model,
+      sourceLanguage: segment.sourceLanguage, targetLanguage: segment.targetLanguage,
       stage, sequence: segment.sequence, revision: segment.revision,
       context: this.options.context, terminology: this.options.terminology,
       preserveNames: this.options.preserveNames, confirmedContext,
     };
   }
 
-  private isLiveSequence(sequence: number) { return !this.disposed && sequence <= this.sequence && sequence >= this.currentSegmentSequence; }
-  private isCurrentRevision(segment: RealtimeSubtitleSegment, controller: AbortController) {
-    return !this.disposed && !controller.signal.aborted && this.state.current?.sequence === segment.sequence
-      && this.state.current.revision === segment.revision;
+  private replaceSegment(segment: RealtimeSubtitleSegment) {
+    if (this.state.current?.id === segment.id) this.patch({ current: segment });
+    else this.patch({ segments: this.state.segments.map((item) => item.id === segment.id ? segment : item) });
   }
-  private countStale() { this.patch({ metrics: { ...this.state.metrics, discardedStaleResponses: this.state.metrics.discardedStaleResponses + 1 } }); }
-  private onRetry(notice: RetryNotice) {
-    this.patch({ status: 'network-reconnecting', error: `网络不稳定，正在重试（${notice.attempt}/${notice.maxRetries}）…`, metrics: {
-      ...this.state.metrics, retryCount: this.state.metrics.retryCount + 1,
-      rateLimitCount: this.state.metrics.rateLimitCount + (notice.rateLimited ? 1 : 0),
-    } });
+  private nextUtteranceId() { return `realtime-${this.generation}-${++this.utteranceCounter}`; }
+  private finalBacklog() { return this.state.segments.filter((item) => item.translationStatus === 'queued' || item.translationStatus === 'streaming').length; }
+  private syncCapture() {
+    if (!this.state.isListening || this.disposed || this.stopping) return;
+    this.options.capture.setPaused(this.pausedByUser || this.asrBlocked
+      || this.queue.length >= REALTIME_CONFIG.maxQueuedAudioChunks - 1
+      || this.finalBacklog() >= REALTIME_CONFIG.maximumPendingTranslations);
+  }
+  private refreshStatus() {
+    if (this.disposed) return;
+    if (this.stopping) { this.patch({ status: 'stopping' }); return; }
+    if (this.startController && !this.state.isListening) {
+      if (this.startController.signal.aborted) this.patch({ status: 'stopping' });
+      return;
+    }
+    if (this.asrBlocked) { if (this.asrFailure) this.patch(this.asrFailure); return; }
+    if (this.pausedByUser && this.state.isListening) { this.patch({ status: 'paused' }); return; }
+    if (!this.state.isListening) { this.patch({ status: 'idle' }); return; }
+    if (this.queue.length >= REALTIME_CONFIG.maxQueuedAudioChunks - 1 || this.finalBacklog() >= REALTIME_CONFIG.maximumPendingTranslations) {
+      this.patch({ status: 'backpressure', error: '积压较多，已暂停收音；处理后自动继续。暂停期间的讲话不会录入。' }); return;
+    }
+    this.patch({ status: this.activeASR ? 'recognizing' : 'listening', error: null });
+  }
+  private countStale() { if (!this.disposed) this.patch({ metrics: { ...this.state.metrics, discardedStaleResponses: this.state.metrics.discardedStaleResponses + 1 } }); }
+  private recordRetry(notice: RetryNotice) {
+    this.patch({ metrics: { ...this.state.metrics, retryCount: this.state.metrics.retryCount + 1,
+      rateLimitCount: this.state.metrics.rateLimitCount + (notice.rateLimited ? 1 : 0) } });
+  }
+  private onASRRetry(notice: RetryNotice) {
+    this.recordRetry(notice);
+    this.patch({ status: this.stopping ? 'stopping' : this.pausedByUser ? 'paused' : 'network-reconnecting',
+      error: `语音识别正在重试（${notice.attempt}/${notice.maxRetries}）…` });
   }
   private permissionMessage(error: unknown) {
     if (error instanceof DOMException && error.name === 'NotAllowedError') return '麦克风权限未开启，请在浏览器设置中允许使用麦克风。';
@@ -387,24 +539,37 @@ export class RealtimeSessionEngine {
     return error instanceof Error ? error.message : '无法启动麦克风，请检查设备后重试。';
   }
   private patch(partial: Partial<RealtimeSessionState>) {
-    if (this.disposed && partial.status !== 'idle') return;
+    if (this.disposed) return;
     this.state = { ...this.state, ...partial };
+    const subtitles = this.state.current ? [...this.state.segments, this.state.current] : this.state.segments;
+    this.state = { ...this.state, translationPending: subtitles.filter((item) => item.translationStatus === 'queued' || item.translationStatus === 'streaming').length,
+      recognitionPending: this.queue.length + (this.activeASR ? 1 : 0), isPaused: this.pausedByUser, isStarting: this.startController !== null };
     this.options.onChange?.(this.state);
   }
   private waitForDrain() {
-    if (!this.pumping && this.queue.length === 0 || ['network-disconnected', 'rate-limited'].includes(this.state.status)) return Promise.resolve();
+    if (this.disposed || !this.pumping && (!this.queue.length || this.asrBlocked)) return Promise.resolve();
     return new Promise<void>((resolve) => this.drainWaiters.push(resolve));
   }
   private notifyDrain() {
-    if (this.pumping || (this.queue.length && !['network-disconnected', 'rate-limited'].includes(this.state.status))) return;
+    if (!this.disposed && (this.pumping || this.queue.length && !this.asrBlocked)) return;
     for (const resolve of this.drainWaiters.splice(0)) resolve();
   }
+  private installNetworkHandlers() {
+    if (typeof window === 'undefined' || this.options.asr.execution === 'local' && this.options.transcriptionOnly) return;
+    this.removeNetworkHandlers();
+    this.networkHandlers = {
+      online: () => { void this.retryPending(); },
+      offline: () => {
+        if (this.options.asr.execution !== 'local') this.patch({ error: '网络已断开，已采集音频保留，可在恢复连接后重试。' });
+      },
+    };
+    window.addEventListener('online', this.networkHandlers.online);
+    window.addEventListener('offline', this.networkHandlers.offline);
+  }
   private removeNetworkHandlers() {
-    if (!this.networkHandlers) return;
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('online', this.networkHandlers.online);
-      window.removeEventListener('offline', this.networkHandlers.offline);
-    }
+    if (!this.networkHandlers || typeof window === 'undefined') return;
+    window.removeEventListener('online', this.networkHandlers.online);
+    window.removeEventListener('offline', this.networkHandlers.offline);
     this.networkHandlers = null;
   }
 }

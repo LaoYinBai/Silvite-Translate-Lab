@@ -47,6 +47,24 @@ test('long continuous speech is windowed with deterministic overlap and ordered 
   assert.ok(chunks.every((chunk, index) => index === 0 || chunk.startTime > chunks[index - 1].startTime));
 });
 
+test('windowing retains the actual overlapping samples and the entire unconsumed tail', () => {
+  const chunker = new RealtimeAudioChunker();
+  const input = Float32Array.from({ length: 48_000 }, (_, index) => 0.1 + index / 100_000);
+  const chunks = [...chunker.push(input, 0), ...chunker.flush()];
+  assert.equal(chunks.length, 2);
+  const overlap = 5_600;
+  assert.deepEqual(chunks[1].samples.slice(0, overlap), chunks[0].samples.slice(-overlap));
+  assert.deepEqual(chunks[1].samples, input.slice(35_200 - overlap));
+  assert.equal(chunks[1].endTime, 3_000);
+});
+
+test('local ASR can use a longer window without changing the cloud defaults', () => {
+  const chunker = new RealtimeAudioChunker({ chunkMs: 6_000, overlapMs: 800 });
+  const chunks = chunker.push(new Float32Array(100_000).fill(0.2), 0);
+  assert.equal(chunks[0].durationMs, 6_000);
+  assert.equal(chunker.flush()[0].startTime, 5_200);
+});
+
 test('transcript merge removes CJK and English overlap despite punctuation drift', () => {
   assert.equal(mergeTranscriptOverlap('今天讨论人工智能的发展', '人工智能的发展，以及软件工程'), '今天讨论人工智能的发展，以及软件工程');
   assert.equal(mergeTranscriptOverlap('Today we discussed artificial intelligence', 'artificial intelligence, and software'), 'Today we discussed artificial intelligence, and software');

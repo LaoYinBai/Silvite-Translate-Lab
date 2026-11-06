@@ -9,6 +9,8 @@ import {
   COMIC_PROMPT,
   AUTO_MODE_INSTRUCTION,
 } from './prompts.mjs';
+import { buildProviderRequest, resolveProvider } from './providers.mjs';
+export { DEFAULT_PROVIDER_ID, normalizeProviderId, resolveProvider, listProviders, buildProviderRequest } from './providers.mjs';
 
 export const SUPPORTED_TRANSLATION_MODES = ['auto', 'natural', 'literary', 'academic', 'business', 'comic'];
 
@@ -46,92 +48,6 @@ const STYLE_PROMPTS = {
   business: BUSINESS_PROMPT,
   comic: COMIC_PROMPT,
 };
-
-const MIMO_API_URL = 'https://api.xiaomimimo.com/v1/chat/completions';
-
-// Provider registry. Selecting a provider changes only the upstream endpoint,
-// credentials, model id and request shape. The Silvite SSE contract, retry
-// policy, JSON validation, prompt composition and completion budget policy are
-// shared, so a request to either provider behaves identically to the client.
-// MiMo is pinned to the current default generation model; an old MIMO_MODEL
-// deployment variable must not silently keep the service on a retired model.
-export const DEFAULT_PROVIDER_ID = 'mimo';
-
-const PROVIDER_DEFINITIONS = {
-  mimo: {
-    id: 'mimo',
-    label: 'MiMo V2.6 Flash',
-    url: MIMO_API_URL,
-    apiKeyEnv: 'MIMO_API_KEY',
-    defaultModel: 'mimo-v2.6-flash',
-    // MiMo needs thinking disabled so temperature is honoured; other providers
-    // may not accept the parameter at all.
-    thinkingDisabled: true,
-    // OpenAI-compatible name; MiMo accepts [1, 131072].
-    budgetParam: 'max_completion_tokens',
-    maxCompletionTokens: 65536,
-  },
-  glm: {
-    id: 'glm',
-    label: 'GLM-4.6V-Flash',
-    url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-    apiKeyEnv: 'GLM_API_KEY',
-    defaultModel: 'glm-4.6v-flash',
-    thinkingDisabled: false,
-    // Zhipu's OpenAI-compatible endpoint documents max_tokens. Not yet verified
-    // against a live key: if the first real call returns 400, this is the one
-    // line to change (or override with GLM_BUDGET_PARAM).
-    budgetParam: 'max_tokens',
-    maxCompletionTokens: 32768,
-  },
-};
-
-export function normalizeProviderId(value) {
-  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(PROVIDER_DEFINITIONS, value)
-    ? value
-    : DEFAULT_PROVIDER_ID;
-}
-
-// Provider endpoint, output ceiling and budget parameter may be overridden
-// per deployment. MiMo's generation model is intentionally pinned above.
-export function resolveProvider(providerId, env = {}) {
-  const definition = PROVIDER_DEFINITIONS[normalizeProviderId(providerId)];
-  const prefix = definition.apiKeyEnv.replace(/_API_KEY$/, '');
-  const ceiling = Number.parseInt(env[`${prefix}_MAX_COMPLETION_TOKENS`] || '', 10);
-  return {
-    ...definition,
-    apiKey: env[definition.apiKeyEnv],
-    url: env[`${prefix}_BASE_URL`] || definition.url,
-    model: definition.id === 'mimo'
-      ? definition.defaultModel
-      : env[`${prefix}_MODEL`] || definition.defaultModel,
-    budgetParam: env[`${prefix}_BUDGET_PARAM`] || definition.budgetParam,
-    maxCompletionTokens: Number.isFinite(ceiling) && ceiling > 0 ? ceiling : definition.maxCompletionTokens,
-  };
-}
-
-export function listProviders() {
-  return Object.values(PROVIDER_DEFINITIONS).map(({ id, label, defaultModel }) => ({ id, label, model: defaultModel }));
-}
-
-export function buildProviderRequest(provider, { messages, budget }) {
-  const body = {
-    model: provider.model,
-    messages,
-    [provider.budgetParam]: Math.min(budget, provider.maxCompletionTokens),
-    temperature: 0.3,
-    stream: true,
-  };
-  if (provider.thinkingDisabled) body.thinking = { type: 'disabled' };
-  return {
-    url: provider.url,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${provider.apiKey}`,
-    },
-    body,
-  };
-}
 
 // Dedicated user instruction for comic images. Plain image requests keep the
 // generic instruction below; comics get the visual-narrative framing.
@@ -1008,9 +924,16 @@ export async function onRequest(context) {
   } = body || {};
 
   // Provider keys come exclusively from the EdgeOne environment variables
-  // (MIMO_API_KEY / GLM_API_KEY); they never ship in source code or the
+  // (shared DEEPSEEK_API_KEY); they never ship in source code or the
   // frontend bundle. An unknown provider id falls back to the default one.
-  const provider = resolveProvider(requestedModel, env);
+  let provider;
+  try {
+    provider = resolveProvider(requestedModel, env);
+  } catch {
+    return new Response(JSON.stringify({ error: 'Provider endpoint or token parameter is not configured correctly' }), {
+      status: 500, headers,
+    });
+  }
   if (!provider.apiKey) {
     console.error(`Provider "${provider.id}" is not configured: missing ${provider.apiKeyEnv}`);
     return new Response(
@@ -1018,6 +941,8 @@ export async function onRequest(context) {
       { status: 500, headers },
     );
   }
+  headers['X-Translation-Provider'] = provider.id;
+  headers['X-Translation-Model'] = provider.model;
 
   if (!text && !imageDataUrl) {
     return new Response(JSON.stringify({ error: 'Text or image is required' }), { status: 400, headers });
@@ -1151,6 +1076,16 @@ export async function onRequest(context) {
                 continue;
               }
               throw { code: 'OUTPUT_TRUNCATED' };
+            }
+
+            // DeepSeek also reports aborted/insufficient_system_resource. Such
+            // responses must not turn a partial translation into a final result.
+            if (finishReason !== 'stop') {
+              if (attempt < MAX_ATTEMPTS - 1) {
+                prepareRetry('stream_interrupted', false);
+                continue;
+              }
+              throw { code: 'MODEL_STREAM_INTERRUPTED' };
             }
 
             const parsed = parseModelContent(content, fallback, finishReason);

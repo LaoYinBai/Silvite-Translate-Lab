@@ -10,6 +10,9 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# Generated, pinned speech models and ONNX runtime; prepare at dev/build time.
+/public/whisper/
+/.cache/whisper/
 *.local
 
 # Editor directories and files

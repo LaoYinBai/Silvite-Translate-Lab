@@ -82,6 +82,7 @@ test('pause commits useful speech and no new ASR is sent until resume', async ()
   await delay(5);
   assert.equal(providers.requests.asr.length, callsWhenPaused);
   assert.equal(engine.getSnapshot().segments.length, 1);
+  assert.equal(engine.getSnapshot().status, 'paused', 'the UI must continue offering Resume after pending STT settles');
   await engine.resume();
   capture.push(new Float32Array(1_600).fill(0.1), 1_100);
   await engine.stop();
@@ -154,5 +155,53 @@ test('429 failures keep the current audio chunk for an explicit retry', async ()
   await delay(15);
   assert.ok(providers.requests.asr.length >= 2);
   await engine.stop();
+  await engine.dispose();
+});
+
+test('transcription-only sessions confirm speech without ever calling the translation API', async () => {
+  const capture = new FakeCapture();
+  const providers = makeProviders();
+  providers.translation.translate = async () => { throw new Error('translation must not be used'); };
+  const engine = new RealtimeSessionEngine({ capture, ...providers, sourceLanguage: 'zh', targetLanguage: 'en', transcriptionOnly: true });
+  await engine.start();
+  for (let i = 0; i < 5; i += 1) capture.push(new Float32Array(1_600).fill(0.1), i * 100);
+  await engine.stop();
+  const state = engine.getSnapshot();
+  assert.equal(state.segments.length, 1);
+  assert.equal(state.segments[0].sourceText, '今天我们讨论人工智能的发展。');
+  assert.equal(state.segments[0].translatedText, '');
+  assert.equal(state.error, null);
+  await engine.dispose();
+});
+
+test('local model preparation completes before opening the microphone and can be cancelled', async () => {
+  const capture = new FakeCapture();
+  const order = [];
+  capture.prepare = async () => { order.push('unlock-audio'); };
+  const providers = makeProviders();
+  let release;
+  let preparationSignal;
+  providers.asr.prepare = async (onProgress, signal) => {
+    order.push('load-model');
+    preparationSignal = signal;
+    onProgress({ message: '正在加载本机识别模型', progress: 50 });
+    await new Promise((resolve, reject) => {
+      release = resolve;
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    });
+  };
+  const engine = new RealtimeSessionEngine({ capture, ...providers, sourceLanguage: 'en', targetLanguage: 'zh', transcriptionOnly: true });
+  const starting = engine.start();
+  assert.deepEqual(order, ['unlock-audio'], 'unlock Web Audio inside the original user gesture');
+  await delay();
+  assert.equal(engine.getSnapshot().status, 'preparing-model');
+  assert.deepEqual(order, ['unlock-audio', 'load-model']);
+  assert.equal(capture.callback, undefined, 'no audio is captured while downloading the model');
+  await engine.stop();
+  release?.();
+  await starting;
+  assert.equal(preparationSignal.aborted, true);
+  assert.equal(engine.getSnapshot().status, 'idle');
+  assert.equal(capture.callback, undefined);
   await engine.dispose();
 });

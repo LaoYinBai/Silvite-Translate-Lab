@@ -1,4 +1,5 @@
-import { API_BASE_URL } from './client';
+import { API_BASE_URL, type TranslationModelId } from './client';
+import { readEventStream } from './eventStream';
 import { type RealtimeSourceLanguage } from '../services/realtime/config';
 import { RealtimeApiError, withRealtimeRetry, type RetryNotice } from '../services/realtime/retry';
 
@@ -9,6 +10,9 @@ export interface RealtimeAudioRequest {
 }
 
 export interface RealtimeTranslationRequest {
+  model?: TranslationModelId;
+  utteranceId?: string;
+  requestId?: string;
   sourceText: string;
   sourceLanguage: 'zh' | 'en';
   targetLanguage: 'zh' | 'en';
@@ -46,11 +50,19 @@ export interface RealtimeASRResult extends RealtimePartialTranscript {
 }
 
 export interface RealtimeTranslationResult {
+  utteranceId?: string;
+  requestId?: string;
   sequence: number;
   revision: number;
   stage: 'provisional' | 'confirmed';
   translation: string;
   latencyMs: number;
+}
+
+export interface RealtimeTranslationHandlers {
+  /** Full text of this generation so far, replaced after onReset. */
+  onDelta?: (text: string) => void;
+  onReset?: (reason?: 'generation' | 'invalid') => void;
 }
 
 async function responseError(response: Response): Promise<RealtimeApiError> {
@@ -172,21 +184,70 @@ export async function translateRealtimeSegment(
   request: RealtimeTranslationRequest,
   signal?: AbortSignal,
   onRetry?: (notice: RetryNotice) => void,
+  handlers: RealtimeTranslationHandlers = {},
 ): Promise<RealtimeTranslationResult> {
-  return withRealtimeRetry(async () => {
+  const logicalId = request.requestId || `translation-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return withRealtimeRetry(async (attempt) => {
     const startedAt = performance.now();
-    const response = await fetch(`${API_BASE_URL}/realtime/translate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(request),
-      signal,
-    });
-    if (!response.ok) throw await responseError(response);
-    const payload = await response.json() as RealtimeTranslationResult;
-    if (payload.sequence !== request.sequence || payload.revision !== request.revision
-      || payload.stage !== request.stage || typeof payload.translation !== 'string') {
-      throw new RealtimeApiError('实时翻译响应与当前字幕不匹配，请重试。', 502, 'STALE_TRANSLATION_RESPONSE');
+    const controller = new AbortController();
+    const abort = () => controller.abort(signal?.reason);
+    const timer = setTimeout(() => controller.abort(new RealtimeApiError('实时翻译等待超时，请重试。', 504, 'TRANSLATION_TIMEOUT')), 30_000);
+    if (signal?.aborted) abort();
+    else signal?.addEventListener('abort', abort, { once: true });
+    const identity = { utteranceId: request.utteranceId || `realtime-${request.sequence}`, requestId: `${logicalId}:${attempt}` };
+    const interrupted = () => new RealtimeApiError('实时翻译连接中断，请重试。', 502, 'TRANSLATION_STREAM_INTERRUPTED');
+    handlers.onReset?.('generation');
+    try {
+      const response = await fetch(`${API_BASE_URL}/realtime/translate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        body: JSON.stringify({ ...request, ...identity }), signal: controller.signal,
+      });
+      if (!response.ok) throw await responseError(response);
+      // Allow a frontend update to coexist with an older JSON endpoint during deployment.
+      if (response.headers.get('Content-Type')?.includes('application/json')) {
+        const payload = await response.json() as RealtimeTranslationResult;
+        if (payload.sequence !== request.sequence || payload.revision !== request.revision || payload.stage !== request.stage
+          || typeof payload.translation !== 'string' || !payload.translation.trim()) {
+          throw new RealtimeApiError('实时翻译响应与当前字幕不匹配。', 502, 'STALE_TRANSLATION_RESPONSE');
+        }
+        return { ...payload, latencyMs: performance.now() - startedAt };
+      }
+      if (!response.body) throw interrupted();
+      let translation = '';
+      let final = false;
+      await readEventStream(response.body, (raw) => {
+        if (controller.signal.aborted) throw controller.signal.reason;
+        let event: {
+          type?: string; utteranceId?: string; requestId?: string; sequence?: number; revision?: number;
+          stage?: string; text?: string; delta?: string; offset?: number; message?: string; code?: string;
+        };
+        try { event = JSON.parse(raw); } catch { throw interrupted(); }
+        if (event.sequence !== request.sequence || event.revision !== request.revision || event.stage !== request.stage
+          || event.utteranceId !== identity.utteranceId || event.requestId !== identity.requestId) return;
+        if (event.type === 'delta' && typeof event.delta === 'string') {
+          if (!Number.isSafeInteger(event.offset)) throw interrupted();
+          if (event.offset! <= translation.length) return; // duplicate frame
+          if (event.offset !== translation.length + event.delta.length) throw interrupted();
+          translation += event.delta;
+          handlers.onDelta?.(translation);
+        } else if (event.type === 'final' && typeof event.text === 'string' && event.text.trim()) {
+          translation = event.text;
+          final = true;
+          return false;
+        } else if (event.type === 'error') {
+          if (event.code === 'INVALID_TRANSLATION') handlers.onReset?.('invalid');
+          throw new RealtimeApiError(event.message || '实时翻译失败，请重试。', 502, event.code || 'TRANSLATION_STREAM_ERROR');
+        }
+      }, controller.signal);
+      if (!final) throw interrupted();
+      return { ...identity, sequence: request.sequence, revision: request.revision, stage: request.stage,
+        translation, latencyMs: performance.now() - startedAt };
+    } catch (error) {
+      if (controller.signal.aborted) throw controller.signal.reason;
+      throw error;
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
     }
-    return { ...payload, latencyMs: performance.now() - startedAt };
   }, { signal, onRetry });
 }

@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslationStore, type TranslationMode } from '../../store/translationStore';
+import { TranslationModelSelect } from '../TranslationModelSelect/TranslationModelSelect';
 import {
   parseDocumentFile,
   DocumentFileError,
@@ -232,6 +233,8 @@ export function InputArea() {
     setTerminology,
     preserveNames,
     setPreserveNames,
+    model,
+    setModel,
     isLoading 
   } = useTranslationStore();
   
@@ -667,6 +670,10 @@ export function InputArea() {
             </label>
           </div>
         )}
+      </div>
+
+      <div className="mt-3 px-1">
+        <TranslationModelSelect value={model} onChange={setModel} disabled={isLoading} />
       </div>
 
       {/* Supported-format summary. States what the app can open without

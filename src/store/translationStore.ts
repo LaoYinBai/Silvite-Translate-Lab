@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { translateStream as apiTranslateStream, checkHealth, type TranslationResponse } from '../api/client';
+import { translateStream as apiTranslateStream, checkHealth, type TranslationResponse, type TranslationModelId } from '../api/client';
 import { DEMO_SAMPLES } from '../demo/samples';
 import { translateDocument, type DocumentProgressStatus } from '../services/document/translateDocument';
 import { translatePdfAsImages, type PdfVisionStatus } from '../services/document/pdfVision';
@@ -88,6 +88,7 @@ interface TranslationState {
   previewImage: PreviewImage | null;
   
   // Settings
+  model: TranslationModelId;
   mode: TranslationMode;
   context: string;
   terminology: string;
@@ -125,6 +126,7 @@ interface TranslationState {
   openPreview: (src: string, alt: string) => void;
   closePreview: () => void;
   setMode: (mode: TranslationMode) => void;
+  setModel: (model: TranslationModelId) => void;
   setContext: (context: string) => void;
   setTerminology: (terminology: string) => void;
   setPreserveNames: (preserve: boolean) => void;
@@ -199,6 +201,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   documentSourceFile: null,
   previewImage: null,
   
+  model: 'deepseek',
   mode: 'auto',
   context: '',
   terminology: '',
@@ -257,6 +260,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   setContext: (context) => set({ context }),
   setTerminology: (terminology) => set({ terminology }),
   setPreserveNames: (preserve) => set({ preserveNames: preserve }),
+  setModel: (model) => set({ model }),
   setExplainTranslation: (explain) => set({ explainTranslation: explain }),
   toggleShowTranslationNotes: () => set((s) => ({ showTranslationNotes: !s.showTranslationNotes })),
   setResult: (result) => set({ result }),
@@ -382,6 +386,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
 
       const response = inputMode === 'image'
         ? await apiTranslateStream({
+            model: state.model,
             text: state.inputText || undefined,
             imageDataUrl: state.inputImage || undefined,
             mode: state.mode,
@@ -391,6 +396,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
             explainTranslation: state.explainTranslation,
           }, streamHandlers, controller.signal)
         : await translateDocument({
+            model: state.model,
             text: documentText,
             mode: state.mode,
             context: state.context || undefined,
@@ -463,6 +469,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
 
     try {
       const response = await translatePdfAsImages({
+        model: state.model,
         file,
         mode: state.mode,
         context: state.context || undefined,
@@ -509,7 +516,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
   // Full new-session reset (single implementation behind every "新建翻译"
   // entry). Clears the whole translation session: input, image, settings
   // (incl. anything a demo sample filled in), result/notes and demo state.
-  // Deliberately KEEPS global app state: theme, service status.
+  // Deliberately KEEPS global app state: model choice, theme, service status.
   reset: () => {
     invalidateActiveStream();
     set({

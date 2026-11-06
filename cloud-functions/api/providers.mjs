@@ -1,18 +1,8 @@
 // Shared by document/image translation and realtime subtitle translation.
 // Credentials and endpoints are read only from server environment variables.
-export const DEFAULT_PROVIDER_ID = 'mimo';
+export const DEFAULT_PROVIDER_ID = 'deepseek';
 
 const PROVIDER_DEFINITIONS = {
-  mimo: {
-    id: 'mimo',
-    label: 'MiMo V2.6 Flash',
-    url: 'https://api.xiaomimimo.com/v1/chat/completions',
-    apiKeyEnv: 'MIMO_API_KEY',
-    defaultModel: 'mimo-v2.6-flash',
-    budgetParam: 'max_completion_tokens',
-    maxCompletionTokens: 65536,
-    hardTokenLimit: 131072,
-  },
   deepseek: {
     id: 'deepseek',
     label: 'DeepSeek Flash',
@@ -22,6 +12,17 @@ const PROVIDER_DEFINITIONS = {
     budgetParam: 'max_tokens',
     maxCompletionTokens: 65536,
     hardTokenLimit: 393216,
+  },
+  glm: {
+    id: 'glm',
+    label: 'GLM 5.3 Flash',
+    // Both models use the same user-configured gateway and credentials.
+    url: '',
+    apiKeyEnv: 'DEEPSEEK_API_KEY',
+    defaultModel: 'glm-5.3-flash',
+    budgetParam: 'max_tokens',
+    maxCompletionTokens: 65536,
+    hardTokenLimit: 65536,
   },
 };
 
@@ -53,10 +54,9 @@ export function resolveProvider(providerId, env = {}) {
     ...definition,
     apiKey: env[definition.apiKeyEnv]?.trim(),
     url: completionEndpoint(env[`${prefix}_BASE_URL`], definition.url),
-    // Keep MiMo pinned so obsolete deployment variables cannot restore retired models.
-    model: definition.id === 'mimo'
-      ? definition.defaultModel
-      : env[`${prefix}_MODEL`]?.trim() || definition.defaultModel,
+    // Pin the two IDs verified in the actual gateway catalog. Old deployment
+    // model overrides must not select an unrelated model.
+    model: definition.defaultModel,
     budgetParam,
     maxCompletionTokens: Number.isFinite(ceiling) && ceiling > 0
       ? Math.min(ceiling, definition.hardTokenLimit)

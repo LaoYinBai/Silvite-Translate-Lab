@@ -4,7 +4,7 @@ import { onRequest, composeTranslationPrompt, wrapSourceData, SOURCE_DATA_MARKER
 import { DATA_BOUNDARY_PROMPT } from '../cloud-functions/api/prompts.mjs';
 import { mimoSseResponse, readSseEvents, makeRequest } from './helpers.mjs';
 
-const ENV = { MIMO_API_KEY: 'test-key', RATE_LIMIT: '10' };
+const ENV = { DEEPSEEK_API_KEY: 'test-key', RATE_LIMIT: '10' };
 
 beforeEach(() => {
   globalThis.fetch = async () => {
