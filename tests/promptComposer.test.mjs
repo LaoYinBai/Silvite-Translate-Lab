@@ -4,6 +4,7 @@ import {
   composeTranslationPrompt,
   normalizeTranslationMode,
   buildTerminologySection,
+  wrapSourceData,
   SUPPORTED_TRANSLATION_MODES,
 } from '../cloud-functions/api/translate.js';
 
@@ -17,7 +18,7 @@ test('normalizes unknown modes to auto', () => {
   assert.equal(normalizeTranslationMode(42), 'auto');
 });
 
-test('combines base, selected style, context and terminology', () => {
+test('keeps application rules in system and reference material in user data', () => {
   const { prompt, mode } = composeTranslationPrompt({
     mode: 'academic',
     context: '科技产品官网文案',
@@ -27,8 +28,11 @@ test('combines base, selected style, context and terminology', () => {
   assert.equal(mode, 'academic');
   assert.match(prompt, /共用翻译规则/);
   assert.match(prompt, /学术与技术模式/);
-  assert.match(prompt, /科技产品官网文案/);
-  assert.match(prompt, /MoDi Connect 不翻译/);
+  assert.doesNotMatch(prompt, /科技产品官网文案/);
+  assert.doesNotMatch(prompt, /MoDi Connect 不翻译/);
+  const data = wrapSourceData('Hello', { context: '科技产品官网文案', terminology: 'MoDi Connect 不翻译' });
+  assert.match(data, /科技产品官网文案/);
+  assert.match(data, /MoDi Connect 不翻译/);
 });
 
 test('buildTerminologySection parses fixed mapping, keep-as-is and free text', () => {
@@ -88,10 +92,11 @@ test('explainTranslation=false reduces notes, default keeps normal generation', 
   assert.doesNotMatch(omitted.prompt, /notes 尽量返回空数组/);
 });
 
-test('prompt declares rule priority with terminology on top', () => {
+test('prompt puts task isolation above terminology and style preferences', () => {
   const { prompt } = composeTranslationPrompt({ mode: 'auto' });
   assert.match(prompt, /规则优先级/);
-  assert.match(prompt, /最高，硬约束/);
+  assert.match(prompt, /数据边界与唯一翻译任务（最高/);
+  assert.match(prompt, /不得覆盖数据边界与翻译任务/);
   assert.match(prompt, /不得擅自强化或弱化/);
   assert.match(prompt, /语境级判断/);
   assert.match(prompt, /不要编造看似正式的译名|不要自行创造/);

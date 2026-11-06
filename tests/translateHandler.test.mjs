@@ -37,8 +37,10 @@ test('academic mode reaches DeepSeek with academic prompt, context and terminolo
   assert.equal(captured.stream, true);
   assert.equal(captured.thinking.type, 'disabled');
   assert.match(captured.messages[0].content, /学术与技术模式/);
-  assert.match(captured.messages[0].content, /论文摘要/);
-  assert.match(captured.messages[0].content, /PI3K 保留/);
+  assert.doesNotMatch(captured.messages[0].content, /论文摘要/);
+  assert.doesNotMatch(captured.messages[0].content, /PI3K 保留/);
+  assert.match(captured.messages[1].content, /论文摘要/);
+  assert.match(captured.messages[1].content, /PI3K 保留/);
   const final = finalEventOf(events);
   assert.equal(final.detected_style, 'academic');
   assert.equal(final.source_language, 'en');

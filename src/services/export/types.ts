@@ -14,7 +14,7 @@ export interface TranslationExportData {
   generatedAt: Date;
 }
 
-export type ExportFormat = 'pdf' | 'docx';
+export type ExportFormat = 'pdf' | 'docx' | 'markdown';
 
 export function formatTimestamp(date: Date): string {
   const y = date.getFullYear();
