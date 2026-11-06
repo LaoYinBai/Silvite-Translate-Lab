@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto';
 import { readFile, writeFile, mkdir, copyFile, readdir } from 'node:fs/promises';
-import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
+import { unzipSync } from 'fflate';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cache = path.join(root, '.cache', 'corpus');
@@ -42,21 +42,20 @@ async function download(urls, file, sha256) {
   }
   throw new Error('Cannot prepare ' + path.basename(file) + ': ' + last?.message);
 }
-const zip = path.join(cache, 'pandoc-3.13-wasm.zip.local');
 const vendoredArchive = await readFile(path.join(root, 'scripts', 'assets', 'pandoc-3.13-wasm.zip'));
 if (hash(vendoredArchive) !== '234d2020a7f3a9aab387bd35df3c17ca2ba0078a82490e2b3ede890d648d64fe') throw new Error('Vendored Pandoc archive hash mismatch');
-await writeFile(zip, vendoredArchive);
-let pandoc;
-try {
-  pandoc = await readFile(path.join(cache, 'pandoc-3.13-wasm', 'pandoc.wasm'));
-  if (hash(pandoc) !== '6f4d43505a545fbfbe3ace4cd1204a7a5d5aea4a7a93c22f09056c0a9381bb4a') pandoc = null;
-} catch { /* extract below */ }
-if (!pandoc) {
-  const result = spawnSync('tar', ['-xf', zip, '-C', cache], { stdio: 'inherit' });
-  if (result.status !== 0) throw new Error('Pandoc extraction failed');
-  pandoc = await readFile(path.join(cache, 'pandoc-3.13-wasm', 'pandoc.wasm'));
+const pandocNames = ['pandoc.wasm', 'COPYING.md', 'COPYRIGHT'];
+const extracted = unzipSync(vendoredArchive, { filter: entry => pandocNames.includes(path.basename(entry.name)) });
+const pandocFiles = new Map(Object.entries(extracted).map(([name, bytes]) => [path.basename(name), bytes]));
+await mkdir(path.join(cache, 'pandoc-3.13-wasm'), { recursive: true });
+for (const name of pandocNames) {
+  const bytes = pandocFiles.get(name);
+  if (!bytes?.length) throw new Error('Pandoc archive is missing ' + name);
+  await writeFile(path.join(cache, 'pandoc-3.13-wasm', name), bytes);
 }
+const pandoc = pandocFiles.get('pandoc.wasm');
 if (hash(pandoc) !== '6f4d43505a545fbfbe3ace4cd1204a7a5d5aea4a7a93c22f09056c0a9381bb4a') throw new Error('Pandoc WASM hash mismatch');
+console.log('Prepared corpus: verified Pandoc 3.13 using JavaScript ZIP extraction');
 const files = [];
 async function publish(file, bytes, split = bytes.length > 20_000_000) {
   await mkdir(path.dirname(path.join(out, file)), { recursive: true });
