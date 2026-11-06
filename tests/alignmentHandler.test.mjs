@@ -78,3 +78,34 @@ test('alignment endpoint distinguishes malformed JSON from valid JSON with inval
   assert.equal(invalid.status, 400);
   assert.equal((await invalid.json()).error, 'INVALID_ALIGNMENT_INPUT');
 });
+
+test('alignment endpoint classifies unusable model responses without leaking model text', async () => {
+  const sourceText = '中文甲；中文乙。';
+  const targetText = 'English one; English two.';
+  const cases = [
+    { finish_reason: 'length', content: 'private truncated response', error: 'ALIGNMENT_INVALID_COMPLETION' },
+    { finish_reason: 'stop', content: 'private non-json response', error: 'ALIGNMENT_INVALID_JSON' },
+    { finish_reason: 'stop', content: JSON.stringify({ pairs: [{ source: 'rewritten', target: 'changed' }] }), error: 'ALIGNMENT_INVALID_PROPOSAL' },
+  ];
+
+  for (const [index, item] of cases.entries()) {
+    globalThis.fetch = async () => new Response(JSON.stringify({ choices: [{
+      finish_reason: item.finish_reason,
+      message: { content: item.content },
+    }] }));
+    const request = new Request('https://silvite.test/api/alignment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-forwarded-for': `192.0.2.${240 + index}` },
+      body: JSON.stringify({ sourceText, targetText, sourceLanguage: 'zh', targetLanguage: 'en', model: 'deepseek' }),
+    });
+    const response = await onRequest({
+      request,
+      env: { DEEPSEEK_API_KEY: 'alignment-test-key' },
+    });
+    const body = await response.text();
+
+    assert.equal(response.status, 502);
+    assert.equal(JSON.parse(body).error, item.error);
+    assert.doesNotMatch(body, /private|rewritten|changed/);
+  }
+});

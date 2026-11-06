@@ -159,18 +159,24 @@ export async function onRequest({ request, env = {} }) {
       const rateLimited = response.status === 429;
       return jsonResponse({ error: rateLimited ? 'RATE_LIMITED' : 'ALIGNMENT_UPSTREAM_ERROR' }, rateLimited ? 429 : 502, headers);
     }
-    let rows;
+    let completion;
     try {
-      const completion = JSON.parse(await readBoundedText(response, MAX_UPSTREAM_BYTES, controller.signal));
-      const choice = completion?.choices?.[0];
-      if (choice?.finish_reason !== 'stop' || typeof choice.message?.content !== 'string') {
-        throw new Error('ALIGNMENT_INVALID_OUTPUT');
-      }
-      const proposal = parseAlignmentProposal(choice.message.content);
-      rows = validateAlignmentPairs(proposal, input.sourceText, input.targetText);
+      completion = JSON.parse(await readBoundedText(response, MAX_UPSTREAM_BYTES, controller.signal));
     } catch (error) {
       if (controller.signal.aborted) throw error;
-      return jsonResponse({ error: error?.message === 'ALIGNMENT_NOT_SEGMENTED' ? 'ALIGNMENT_NOT_SEGMENTED' : 'ALIGNMENT_INVALID_OUTPUT' }, 502, headers);
+      return jsonResponse({ error: 'ALIGNMENT_INVALID_COMPLETION' }, 502, headers);
+    }
+    const choice = completion?.choices?.[0];
+    if (choice?.finish_reason !== 'stop' || typeof choice.message?.content !== 'string') {
+      return jsonResponse({ error: 'ALIGNMENT_INVALID_COMPLETION' }, 502, headers);
+    }
+    let proposal;
+    try { proposal = parseAlignmentProposal(choice.message.content); }
+    catch { return jsonResponse({ error: 'ALIGNMENT_INVALID_JSON' }, 502, headers); }
+    let rows;
+    try { rows = validateAlignmentPairs(proposal, input.sourceText, input.targetText); }
+    catch (error) {
+      return jsonResponse({ error: error?.message === 'ALIGNMENT_NOT_SEGMENTED' ? 'ALIGNMENT_NOT_SEGMENTED' : 'ALIGNMENT_INVALID_PROPOSAL' }, 502, headers);
     }
     controller.signal.throwIfAborted();
     // No document strings, model prose, usage, reasoning or raw upstream fields
