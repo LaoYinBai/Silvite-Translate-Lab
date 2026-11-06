@@ -75,8 +75,8 @@ export function buildAlignmentMessages(input) {
   ];
 }
 
-function invalidOutput() {
-  return new Error('ALIGNMENT_INVALID_OUTPUT');
+function invalidOutput(code = 'ALIGNMENT_INVALID_SCHEMA') {
+  return new Error(code);
 }
 
 export function parseAlignmentProposal(content) {
@@ -116,7 +116,7 @@ export function validateAlignmentPairs(proposal, sourceText, targetText) {
       const at = text.indexOf(copy, cursor);
       const end = at + copy.length;
       if (at < cursor || text.slice(cursor, at).trim()
-        || !isTextBoundary(text, at) || !isTextBoundary(text, end)) throw invalidOutput();
+        || !isTextBoundary(text, at) || !isTextBoundary(text, end)) throw invalidOutput('ALIGNMENT_TEXT_MISMATCH');
       const ordinal = ++ordinals[side];
       row[side] = { start: cursor, end, firstParagraph: ordinal, lastParagraph: ordinal };
       cursors[side] = end;
@@ -126,11 +126,11 @@ export function validateAlignmentPairs(proposal, sourceText, targetText) {
   }
   for (const side of ['source', 'target']) {
     const text = texts[side];
-    if (text.slice(cursors[side]).trim()) throw invalidOutput();
+    if (text.slice(cursors[side]).trim()) throw invalidOutput('ALIGNMENT_INCOMPLETE_COVERAGE');
     // Assign trailing whitespace to the last actual range on that side, even
     // when the final row is unilateral. Thus every original code unit survives.
     const last = rows.findLast(row => row[side] !== null);
-    if (!last) throw invalidOutput();
+    if (!last) throw invalidOutput('ALIGNMENT_INCOMPLETE_COVERAGE');
     last[side].end = text.length;
   }
   const hasMultipleGroups = ['source', 'target'].some(side => rows.filter(row => {

@@ -176,7 +176,9 @@ export async function onRequest({ request, env = {} }) {
     let rows;
     try { rows = validateAlignmentPairs(proposal, input.sourceText, input.targetText); }
     catch (error) {
-      return jsonResponse({ error: error?.message === 'ALIGNMENT_NOT_SEGMENTED' ? 'ALIGNMENT_NOT_SEGMENTED' : 'ALIGNMENT_INVALID_PROPOSAL' }, 502, headers);
+      const code = ['ALIGNMENT_NOT_SEGMENTED', 'ALIGNMENT_INVALID_SCHEMA', 'ALIGNMENT_TEXT_MISMATCH', 'ALIGNMENT_INCOMPLETE_COVERAGE']
+        .includes(error?.message) ? error.message : 'ALIGNMENT_INVALID_PROPOSAL';
+      return jsonResponse({ error: code }, 502, headers);
     }
     controller.signal.throwIfAborted();
     // No document strings, model prose, usage, reasoning or raw upstream fields

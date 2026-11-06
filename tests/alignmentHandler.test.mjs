@@ -85,7 +85,9 @@ test('alignment endpoint classifies unusable model responses without leaking mod
   const cases = [
     { finish_reason: 'length', content: 'private truncated response', error: 'ALIGNMENT_INVALID_COMPLETION' },
     { finish_reason: 'stop', content: 'private non-json response', error: 'ALIGNMENT_INVALID_JSON' },
-    { finish_reason: 'stop', content: JSON.stringify({ pairs: [{ source: 'rewritten', target: 'changed' }] }), error: 'ALIGNMENT_INVALID_PROPOSAL' },
+    { finish_reason: 'stop', content: JSON.stringify({ segments: [] }), error: 'ALIGNMENT_INVALID_SCHEMA' },
+    { finish_reason: 'stop', content: JSON.stringify({ pairs: [{ source: '改写', target: 'Changed' }] }), error: 'ALIGNMENT_TEXT_MISMATCH' },
+    { finish_reason: 'stop', content: JSON.stringify({ pairs: [{ source: '中文甲；', target: 'English one;' }] }), error: 'ALIGNMENT_INCOMPLETE_COVERAGE' },
   ];
 
   for (const [index, item] of cases.entries()) {
@@ -106,6 +108,6 @@ test('alignment endpoint classifies unusable model responses without leaking mod
 
     assert.equal(response.status, 502);
     assert.equal(JSON.parse(body).error, item.error);
-    assert.doesNotMatch(body, /private|rewritten|changed/);
+    assert.doesNotMatch(body, /private|改写|Changed|English one/);
   }
 });
