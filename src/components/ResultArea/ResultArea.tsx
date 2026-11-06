@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslationStore, type TranslationResult } from '../../store/translationStore';
 import { ExportMenu } from '../ExportMenu/ExportMenu';
 import { languageLabel } from '../../services/export/types';
+import { ParagraphComparison } from './ParagraphComparison';
 
 export function ResultArea() {
   const { result, isLoading, error, isStreaming, streamingText, streamStatus, progressPercent } = useTranslationStore();
@@ -218,6 +219,7 @@ const SEGMENT_TYPE_LABELS: Record<string, string> = {
 function ResultCard({ result }: { result: TranslationResult }) {
   const { showTranslationNotes, toggleShowTranslationNotes, isDemoMode } = useTranslationStore();
   const [copySuccess, setCopySuccess] = useState(false);
+  const [showAlignment, setShowAlignment] = useState(true);
   const isDemo = isDemoMode || result.source === 'demo';
   
   const handleCopy = async () => {
@@ -314,10 +316,22 @@ function ResultCard({ result }: { result: TranslationResult }) {
       </div>
       
       {/* Translation result */}
-      <div className="p-7">
-        <p className="text-[17px] leading-[1.8] text-[#1a1a1a] whitespace-pre-wrap">
-          {result.translation}
-        </p>
+      <div className="p-4 md:p-7">
+        {result.paragraphAlignment && (
+          <div className="flex flex-wrap gap-2 mb-4" aria-label="结果显示方式">
+            <button type="button" aria-pressed={showAlignment} onClick={() => setShowAlignment(true)} className={`btn btn-secondary h-10 ${showAlignment ? 'bg-[#e6f4ff] border-[#1677ff] text-[#1677ff]' : ''}`}>中英段落对照</button>
+            <button type="button" aria-pressed={!showAlignment} onClick={() => setShowAlignment(false)} className={`btn btn-secondary h-10 ${!showAlignment ? 'bg-[#e6f4ff] border-[#1677ff] text-[#1677ff]' : ''}`}>完整译文</button>
+          </div>
+        )}
+        {result.alignmentStatus === 'pending' && <p role="status" className="mb-4 text-[12px] text-[#888888]">译文已生成，正在整理中英文段落对照…</p>}
+        {result.alignmentError && <p role="status" className="mb-4 text-[12px] text-[#888888]">{result.alignmentError}</p>}
+        {result.paragraphAlignment && showAlignment ? (
+          <ParagraphComparison alignment={result.paragraphAlignment} />
+        ) : (
+          <p className="text-[17px] leading-[1.8] text-[#1a1a1a] whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+            {result.translation}
+          </p>
+        )}
       </div>
       
       {/* Detected text (for image mode) */}

@@ -12,6 +12,8 @@
 
 **状态（2026-11-06）：** 开发方案，尚未实现。用户提供的技术文档及真实样本已分析；第三方读取成功不等于 Trados 原生功能验收通过。
 
+**开工审查（2026-11-07）：有条件放行 Task 0 与基础模型。** [完整审查及必须遵守的数据/质量契约](../../reviews/2026-11-07-corpus-readiness.md) 是本计划的补充约束。下面的类型是初始草图，不能省去审查要求的原始块、字符范围、混合标签节点、类型化元数据和版本化编辑关系；备选依赖通过最小浏览器验证后再锁定。完整 SDLTM 互转尚未技术放行，原始目标仍保留。
+
 ## Global Constraints
 
 - 转换与对齐只在浏览器内计算；运行时不依赖宿主机软件、Trados DLL、Python、Node 服务或转换 API。现有在线翻译/STT 服务与本工具的运行条件分别记录。
@@ -43,7 +45,7 @@
 | `src/services/corpus/{tmx,rtf,sdltm}.ts` | 各格式适配器；保留正文、标签与元数据 |
 | `src/services/corpus/corpus.worker.ts` | 重计算、进度、取消及资源生命周期 |
 | `src/services/alignment/{segment,align}.ts` | 保留位置的分句、对齐路径及评分 |
-| `src/stores/useCorpusStore.ts` | 导入状态、双语行、人工校正和会话保存 |
+| `src/store/corpusStore.ts` | 导入状态、双语行、人工校正和会话保存 |
 | `src/components/CorpusTools/CorpusTools.tsx` | “格式转换”“中英对齐”入口及共用编辑器 |
 | `src/App.tsx`、`src/components/Sidebar/Sidebar.tsx` | 新增“语料工具”，界面和重资源延迟加载 |
 | `src/services/document/fileParser.ts`、`officeParser.ts` | 增加结构输出适配，复用已有格式识别 |
@@ -72,11 +74,29 @@ type JobOptions = { signal?: AbortSignal; onProgress?: (fraction: number) => voi
 
 Worker 消息携带 jobId，提供 start / progress / result / error / cancel；AbortSignal 在调用端转换为 cancel 消息。取消同步 WASM 任务可终止并重建 Worker。XML 解析选 Worker 兼容实现，或在主线程解析后传结构化数据，不传 DOM 对象。
 
+## Task 0：开工前置技术验证与契约固定
+
+**Files:** 技术验证放入独立开发脚本/合成夹具，避免先接完整业务界面；结论写入 `docs/research/corpus-feasibility.md`，资源清单及模型 revision 随实现固定。
+
+**Interfaces:** 采用开工审查的数据契约。归一化只用于匹配，原文使用不可变块和 UTF-16 范围；标签使用有序节点，编辑使旧序列化失效；int64 在项目 JSON 中采用类型化十进制字符串。
+
+- [ ] 固定 Worker 可用的混合 XML 解析/序列化方案，证明有序正文、成对标签、属性、空侧和多语言变体保留；禁止外部实体与外部资源加载。
+- [ ] 在真实浏览器验证 RTF 候选能正确读取样本式行列、Unicode/回退/代码页及隐藏源文类型检测，再选定并记录版本、加载方式、许可证及源代码声明。
+- [ ] 在浏览器 Worker 里完成 SQLite 字节导入、int64 绑定/读取、字节导出回读；记录具体构建和资源哈希，不能用 Node SQLite 代验。
+- [ ] 固定分句、锚点、1:1/1:2/2:1/2:2/1:0/0:1 及每侧最多 3 句的自动转移；定义长句切窗、pooling 和完整覆盖。建立分文档隔离的标注评估集，按审查文档的质量口径比较候选。
+- [ ] 复用 Transformers.js 3.8.1 验证向量路线，锁定模型不可变 revision、全部资源、许可证与哈希；Hunalign 的词典/分词/许可未落实前不视为最终备选已可用。
+- [ ] 前置 SDLTM 新文本派生数据实验与原生验收计划，明确哪些字段可生成、哪些仍未知；不能把占位 hash 或旧内容索引当作可用结果。
+- [ ] 固定首期双文档输入为 TXT / DOCX / 普通单语 RTF；文本 PDF 作为单独的提取质量检查通道，扫描 PDF 的本地 OCR 未验证前不承诺支持。其他现有翻译输入格式不自动等同于可保真对齐格式。
+- [ ] 固定各通道支持矩阵、导出损失清单、项目 JSON/IndexedDB 恢复规则、PC/手机待测工作负载与离线定义；资源必须自托管，模型和 WASM 按需加载。
+- [ ] 各通道完成后记录可复现的浏览器证据，再放行对应业务适配；未通过的 SDLTM 出口独立保留研究状态，不阻塞其他基础模块，也不标记完整互转完成。
+
 ## Task 1：统一模型、编辑器和任务生命周期
 
-**Files:** 新建 `types.ts`、`corpus.worker.ts`、`useCorpusStore.ts`、`CorpusTools.tsx`；修改 App 和 Sidebar；验证文件 `tests/corpusModel.test.mjs`。
+**Files:** 新建 `types.ts`、`corpus.worker.ts`、`src/store/corpusStore.ts`、`CorpusTools.tsx`；修改 App 和 Sidebar；验证文件 `tests/corpusModel.test.mjs`。
 
 **Interfaces:** 产出上述 Corpus / StructuredDocument / JobOptions；编辑动作按 unitId 操作，支持拆分、合并、修改、两侧留空及撤销；会话 JSON 保存模型版本。
+
+按审查契约补齐原始块/字符覆盖/标签/编辑 revision/撤销重做/类型化元数据/项目恢复。此任务可先于 Task 0 的重依赖结果启动，完整界面不得假定未验证的适配器已可用。
 
 - [ ] 为 `空源文/空译文/双空保留`、`编辑后撤销恢复原文及 segmentIds`、`取消后旧 jobId 结果被忽略` 编写验证用例。
 - [ ] 运行 `node --test tests/corpusModel.test.mjs`，确认新模块缺失或行为未实现时失败。
@@ -114,12 +134,13 @@ Worker 消息携带 jobId，提供 start / progress / result / error / cancel；
 
 **Files:** 新建 `segment.ts`、`align.ts`、`tests/alignment.test.mjs`；扩展结构解析及共用编辑器。
 
-**Interfaces:** `alignDocuments(source: StructuredDocument, target: StructuredDocument, anchors: { sourceId: string; targetId: string }[], options: JobOptions): Promise<Corpus>`；返回 1:1、1:N、N:1、1:0、0:1，保留原句范围和算法原始分数。
+**Interfaces:** `alignDocuments(source: StructuredDocument, target: StructuredDocument, anchors: { sourceId: string; targetId: string }[], options: JobOptions): Promise<Corpus>`；返回 1:1、1:N、N:1、N:M、1:0、0:1，至少支持 2:2，自动路径每侧最多 3 句；保留原句范围和算法原始分数。锚点重叠/交叉先诊断，重跑保留锁定区间，换序由人工重新配对。
 
 - [ ] 建立人工标注的公开合成夹具，覆盖缩写/数字、错分句、漏译、多句对应、人工锚点、换序、重复句及连续运行两次无前次结果。
 - [ ] 运行 `node --test tests/alignment.test.mjs`，确认缺失能力失败。
 - [ ] 给文档解析增加段落/表格结构输出；现有纯文本结果和翻译请求 chunker 不作为对齐关系。
 - [ ] 比较多语 MiniLM + JS 动态规划与 Hunalign WASM：固定夹具上的对齐准确性、耗时、峰值内存、资源下载量和许可。语义路线优先评估，约 118 MB 的量化模型及 tokenizer 延迟加载；WebGPU 可选，WASM 能运行。
+- [ ] 按 Task 0 固定的分文档保留集报告精确对齐组 precision/recall/F1 与空对应、多句对应错误。初始目标 F1 ≥ 0.90、字符覆盖 100%、锁定锚点违反 0；自动结果均待复核，分数不伪装为正确概率。对长句验证无静默 tokenizer 截断。
 - [ ] Hunalign 若入选，修复实例复用时 printLog 未清空；中文分词和词典遵循同一规则，确认词典许可。其分数不显示为正确概率。
 - [ ] 同一命令全部通过；浏览器断网缓存运行、资源下载失败重试、推理中取消、手动锚点及空侧调整均可演示。换序无法由单调算法处理时必须允许人工调整。
 - [ ] 提交实际算法选择、质量指标和支持边界。

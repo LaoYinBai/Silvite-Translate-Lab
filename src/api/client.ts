@@ -17,6 +17,9 @@ export interface TranslationRequest {
 }
 
 export interface TranslationResponse {
+  // Browser-derived provenance for document assembly; never supplied by or
+  // sent to the model. Each entry is one confirmed translation request.
+  translatedRanges?: import('../services/alignment/paragraphs').TranslatedRange[];
   source_language: string;
   target_language: string;
   detected_style?: 'natural' | 'literary' | 'academic' | 'business' | 'comic';

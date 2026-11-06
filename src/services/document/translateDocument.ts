@@ -1,6 +1,7 @@
 import type { TranslationRequest, TranslationResponse, TranslationStreamHandlers } from '../../api/client';
 import { translateStream } from '../../api/client';
 import { chunkDocument, detectDocumentLanguage, extractDocumentTitle } from './chunker';
+import type { TranslatedRange } from '../alignment/paragraphs';
 
 export type DocumentProgressStatus = 'analyzing' | 'translating' | 'retrying-part' | 'assembling';
 
@@ -99,12 +100,25 @@ export async function translateDocument(
   const initialChunks = chunkDocument(input.text, { targetChars: dependencies.targetChars });
   const totalChars = Math.max(1, input.text.length);
   const translatedParts: string[] = [];
+  const translatedRanges: TranslatedRange[] = [];
+  let translatedCharacters = 0;
   const notes: TranslationResponse['notes'] = [];
   let completedChars = 0;
   let previousSource = '';
   let sourceLanguage: string = detectDocumentLanguage(input.text);
   let resolvedTargetLanguage = targetLanguage(sourceLanguage);
   let detectedStyle: TranslationResponse['detected_style'];
+
+  const appendPart = (source: string, translation: string) => {
+    translatedRanges.push({
+      sourceStart: completedChars, sourceEnd: completedChars + source.length,
+      targetStart: translatedCharacters, targetEnd: translatedCharacters + translation.length,
+    });
+    translatedParts.push(translation);
+    completedChars += source.length;
+    translatedCharacters += translation.length;
+    previousSource = source;
+  };
 
   const report = (status: DocumentProgressStatus, current = '') => {
     const percent = status === 'assembling' ? 100 : Math.min(99, Math.round((completedChars / totalChars) * 100));
@@ -146,10 +160,8 @@ export async function translateDocument(
         sourceLanguage = response.source_language || sourceLanguage;
         resolvedTargetLanguage = response.target_language || resolvedTargetLanguage;
         detectedStyle ||= response.detected_style;
-        translatedParts.push(response.translation);
+        appendPart(text, response.translation);
         notes.push(...(response.notes || []));
-        completedChars += text.length;
-        previousSource = text;
         report('translating');
         return;
       } catch (error) {
@@ -162,9 +174,7 @@ export async function translateDocument(
           for (const part of smaller) {
             if (part.translatable) await processTranslatable(part.text, nextTarget);
             else {
-              translatedParts.push(part.text);
-              completedChars += part.text.length;
-              previousSource = part.text;
+              appendPart(part.text, part.text);
             }
           }
           return;
@@ -185,9 +195,7 @@ export async function translateDocument(
     if (chunk.translatable) {
       await processTranslatable(chunk.text, initialTarget);
     } else {
-      translatedParts.push(chunk.text);
-      completedChars += chunk.text.length;
-      previousSource = chunk.text;
+      appendPart(chunk.text, chunk.text);
       report('translating');
     }
   }
@@ -203,5 +211,6 @@ export async function translateDocument(
     detected_text: null,
     segments: [],
     notes,
+    translatedRanges,
   };
 }

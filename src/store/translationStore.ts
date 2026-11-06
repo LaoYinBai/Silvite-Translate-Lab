@@ -4,6 +4,8 @@ import { DEMO_SAMPLES } from '../demo/samples';
 import { translateDocument, type DocumentProgressStatus } from '../services/document/translateDocument';
 import { translatePdfAsImages, type PdfVisionStatus } from '../services/document/pdfVision';
 import type { DocumentFileErrorCode, ParsedDocumentFile } from '../services/document/fileParser';
+import { supportsParagraphAlignment, type ParagraphAlignment } from '../services/alignment/paragraphs';
+import { alignParagraphsInBrowser } from '../services/alignment/browser';
 
 export type TranslationMode = 
   | 'auto'
@@ -64,6 +66,11 @@ export interface TranslationResult {
   detectedText?: string;
   segments: TranslationSegment[];
   notes: TranslationNote[];
+  // Frozen at request completion; the editable input can subsequently change.
+  sourceText?: string;
+  paragraphAlignment?: ParagraphAlignment;
+  alignmentStatus?: 'pending' | 'ready' | 'unavailable';
+  alignmentError?: string;
   // Distinguishes demo sample data from a real model response so rendering
   // and actions (copy/regenerate/export) can tell the two apart.
   source?: 'demo' | 'real';
@@ -169,7 +176,7 @@ export function effectiveInputMode(input: Pick<TranslationState, 'documentFile' 
 
 // Single mapping from a model response to the session result, shared by the
 // text/document/vision paths so their result shape cannot drift apart.
-function toTranslationResult(response: TranslationResponse): TranslationResult {
+function toTranslationResult(response: TranslationResponse, sourceText: string): TranslationResult {
   return {
     source: 'real',
     sourceLanguage: response.source_language,
@@ -181,7 +188,32 @@ function toTranslationResult(response: TranslationResponse): TranslationResult {
       type: segment.type as TranslationSegmentType,
     })),
     notes: response.notes || [],
+    sourceText,
   };
+}
+
+async function publishTranslationResult(
+  response: TranslationResponse,
+  sourceText: string,
+  signal: AbortSignal,
+  publish: (result: TranslationResult) => void,
+): Promise<void> {
+  const result = toTranslationResult(response, sourceText);
+  if (!sourceText.trim() || !supportsParagraphAlignment(result.sourceLanguage, result.targetLanguage)) {
+    publish(result);
+    return;
+  }
+  publish({ ...result, alignmentStatus: 'pending' });
+  try {
+    const alignment = await alignParagraphsInBrowser({
+      sourceText, targetText: result.translation,
+      sourceLanguage: result.sourceLanguage, targetLanguage: result.targetLanguage,
+      translatedRanges: response.translatedRanges,
+    }, signal);
+    if (!signal.aborted) publish({ ...result, paragraphAlignment: alignment || undefined, alignmentStatus: alignment ? 'ready' : 'unavailable' });
+  } catch (error) {
+    if (!signal.aborted) publish({ ...result, alignmentStatus: 'unavailable', alignmentError: error instanceof Error ? error.message : '段落对照暂时不可用，可以继续查看完整译文。' });
+  }
 }
 
 function visionStatusText(status: PdfVisionStatus, percent: number): string {
@@ -418,13 +450,16 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       // A newer session started meanwhile: this result is stale.
       if (!isCurrent()) return;
 
-      set({
-        result: toTranslationResult(response),
-        isLoading: false,
-        isStreaming: false,
-        streamingText: '',
-        streamStatus: null,
-        progressPercent: 100,
+      await publishTranslationResult(response, inputMode === 'image' ? response.detected_text || '' : documentText, controller.signal, (result) => {
+        if (!isCurrent()) return;
+        set({
+          result,
+          isLoading: false,
+          isStreaming: false,
+          streamingText: '',
+          streamStatus: null,
+          progressPercent: 100,
+        });
       });
     } catch (err) {
       if (!isCurrent()) return;
@@ -489,14 +524,17 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       });
 
       if (!isCurrent()) return;
-      set({
-        result: toTranslationResult(response),
-        isLoading: false,
-        isStreaming: false,
-        streamingText: '',
-        streamStatus: null,
-        progressPercent: 100,
-        fileStatus: 'ready',
+      await publishTranslationResult(response, response.detected_text || '', controller.signal, (result) => {
+        if (!isCurrent()) return;
+        set({
+          result,
+          isLoading: false,
+          isStreaming: false,
+          streamingText: '',
+          streamStatus: null,
+          progressPercent: 100,
+          fileStatus: 'ready',
+        });
       });
     } catch (err) {
       if (!isCurrent()) return;

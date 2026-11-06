@@ -2624,7 +2624,7 @@ PDF 进入图片校验并被拒（「不支持的文件格式，请使用 JPG、
 
 完整任务、文件边界、公共接口与验收见 [浏览器语料工具实施计划](docs/superpowers/plans/2026-11-06-browser-corpus-tools.md)。技术依据和社区实现见 [调研报告](docs/research/2026-11-06-static-conversion-and-alignment.md)，真实样本的 [摘要](docs/research/2026-11-06-sample-inventory.json) 与 [SDLTM schema](docs/research/2026-11-06-sdltm-schema.sql) 一并作为开发参考。
 
-实施顺序：统一双语模型与编辑器 → TMX/常见双栏 RTF 双向转换 → SDLTM 读取 → 自动对齐与人工复核 → SDLTM 写出实验及原生验收 → 静态交付。RTF 同时区分双语表格、普通单语和旧 Trados 特殊格式，不能仅按扩展名套用同一解析流程。
+实施顺序：先完成 Task 0 的浏览器技术验证与原文保真/质量契约，SDLTM 派生数据实验前置；基础模型可并行建立，再接 TMX/常见双栏 RTF 双向转换 → SDLTM 读取 → 自动对齐与人工复核 → SDLTM 原生关卡 → 静态交付。2026-11-07 [开工审查](docs/reviews/2026-11-07-corpus-readiness.md) 有条件放行技术验证和基础工作，尚未放行完整三格式互转。RTF 同时区分双语表格、普通单语和旧 Trados 特殊格式，不能仅按扩展名套用同一解析流程。
 
 用户五组真实样本有 183 个 RTF/TMX 行、180 条 SDLTM TU；三条差异包含空侧数据，必须保留并明确提示。五份 SDLTM 均为 20 表、25 个显式索引，超过旧空模板的结构；int64 必须精确读写。模板可以指导 schema，但不能生成新文本对应的 Trados 哈希、分词或模糊索引。SDLTM 写出须以原生打开、导出、精确/模糊检索、编辑和重新打开为完成标准，不能仅凭 SQLite 可读或第三方导出成功宣称完全兼容。
 
