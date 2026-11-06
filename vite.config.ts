@@ -92,7 +92,7 @@ export default defineConfig({
     sourcemap: false,
   },
   server: {
-    watch: { ignored: ['**/public/whisper/**', '**/.cache/whisper/**', '**/public/asr/**', '**/.cache/sherpa/**'] },
+    watch: { ignored: ['**/public/whisper/**', '**/.cache/whisper/**', '**/public/asr/**', '**/.cache/sherpa/**', '**/public/corpus/**', '**/.cache/corpus/**'] },
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

@@ -2618,15 +2618,28 @@ PDF 进入图片校验并被拒（「不支持的文件格式，请使用 JPG、
 
 ## 二十三、静态浏览器语料工具开发方案（2026-11-06）
 
-**状态：已完成调研和真实样本结构分析，功能待实现。** 面向翻译专业学生的个人学习场景，增加“语料工具”，提供 TMX / RTF / SDLTM 转换和中英双文档对齐，共用预览、拆分、合并、留空、人工锚点及校正界面。
+**状态更新（2026-11-07）：TMX / 常见双栏 RTF 与中英双文档对齐已接入 Beta；新增 TMX → SDLTM 实验输出已完成五组 183 条本地回放及独立 SQLite 核验。** 当前功能和实际验证范围见 [语料工具实施记录](docs/corpus-tools.md)。浏览器/手机端端到端、专业保留集 F1 和原生 Trados 尚未验收，完整目标仍包括 TMX / RTF / SDLTM 转换和双文档对齐。
 
 转换、SQLite、对齐和模型推理均在浏览器 JS / WASM / Worker 内执行，资源自托管、按需加载；成品不依赖 Trados、Glossary Converter、Python、Node 服务或本机转换程序。现有在线翻译/STT 的服务端依赖不属于这项转换功能的运行条件。
 
 完整任务、文件边界、公共接口与验收见 [浏览器语料工具实施计划](docs/superpowers/plans/2026-11-06-browser-corpus-tools.md)。技术依据和社区实现见 [调研报告](docs/research/2026-11-06-static-conversion-and-alignment.md)，真实样本的 [摘要](docs/research/2026-11-06-sample-inventory.json) 与 [SDLTM schema](docs/research/2026-11-06-sdltm-schema.sql) 一并作为开发参考。
 
-实施顺序：先完成 Task 0 的浏览器技术验证与原文保真/质量契约，SDLTM 派生数据实验前置；基础模型可并行建立，再接 TMX/常见双栏 RTF 双向转换 → SDLTM 读取 → 自动对齐与人工复核 → SDLTM 原生关卡 → 静态交付。2026-11-07 [开工审查](docs/reviews/2026-11-07-corpus-readiness.md) 有条件放行技术验证和基础工作，尚未放行完整三格式互转。RTF 同时区分双语表格、普通单语和旧 Trados 特殊格式，不能仅按扩展名套用同一解析流程。
+当前实施顺序为 TMX / 常见双栏 RTF 与中英对齐 → TMX → SDLTM 实验输出及结构回读 → 后续通用 SDLTM 读取、原生兼容和各端验收。用户本次授权允许实验文件输出，原生 Trados 未验证不再成为实验出口的阻断条件；[开工审查](docs/reviews/2026-11-07-corpus-readiness.md) 中关于“完整三格式互转”和专业质量的要求继续保留，不能借此把实验结果写成完整兼容。RTF 仍区分双语表格、普通单语和旧 Trados 特殊格式。
 
-用户五组真实样本有 183 个 RTF/TMX 行、180 条 SDLTM TU；三条差异包含空侧数据，必须保留并明确提示。五份 SDLTM 均为 20 表、25 个显式索引，超过旧空模板的结构；int64 必须精确读写。模板可以指导 schema，但不能生成新文本对应的 Trados 哈希、分词或模糊索引。SDLTM 写出须以原生打开、导出、精确/模糊检索、编辑和重新打开为完成标准，不能仅凭 SQLite 可读或第三方导出成功宣称完全兼容。
+SDLTM 实验写出的实现、已检查项与待验边界：
+
+- 生产实现为纯前端 SQLite WASM Worker，依赖固定 `@sqlite.org/sqlite-wasm@3.54.1-build1`。官方空模板为 245760 字节、13 表、零 TU，SHA-256 `d0e367a1de5d1ed9f65d9cd031e8d9c551cb5fe4ecb1a5ec948f5a5e2db70eaf`；SQLite 引擎 SHA-256 `b8a92a19f441a90ff2339fe988fbe317c4adf3ed844096f12aee04aa72d58257`，资源准备阶段按固定哈希核对。模板副本补齐样本的新列、20 业务表和 25 个显式 SQL 索引，独立核验各份样本表名/索引名集合相同；不把名称一致写成专有数据已生成。
+- 清除模板的 2 个 attributes 定义和 4 个 picklist 值，事务写入当前中英变体与语言/计数后导出新文件，并 VACUUM；不覆盖模板或用户文件。保持官方模板 `VERSION=8.06`，不伪称由原生 8.10 应用生成。
+- 哈希占位规则为当前文本 UTF-8 字节的 SHA-256 摘要前 8 字节按 **signed big-endian int64** 解释；精确值经 BigInt 绑定/回读，不经过 JS Number。GUID BLOB 使用 **.NET `Guid.ToByteArray()` / `bytes_le`** 字节布局；固定 GUID 布局及 signed64 精确回读已核实。它们只证明字节/整数处理正确，不代表 Trados 原生哈希算法已复现。
+- 不重建专有 token、分词签名或 fuzzy 数据，不把模板自带的 SQLite 索引等同于 Trados 的语义索引，也不复制其他文本的派生值冒充新内容的索引。未生成的项须明确列入实验边界，并满足实际模板的表级约束。
+- 仅导出当前未排除记录的工作中英文本及其行序，保留空侧和双空。工作中英侧含保护性行内标签/代码时阻止 SDLTM 导出并定位记录，不能静默剥离；额外语种、TU/TUV 元数据、notes 及应用状态的未表示部分列入损失清单，供用户确认。
+- 最终输出字节重新打开检查 `PRAGMA integrity_check`、`PRAGMA foreign_key_check`、真实/声明 TU 计数、语言方向和逐行文本/哈希；失败时报错，不以日志里的成功条数代替回读。本地写出使用 SQLite WASM，独立核验使用 Node 原生 SQLite 只读打开文件、独立 DOM 提取每条 Segment 的正文和语言；这是开发核验工具，不是浏览器成品的 Node 依赖。
+- 本地日志 `.cache/corpus/sdltm-replay.log` 记录 9/10/19/20/25 组分别输出 **42/49/30/20/42**，合计 **183**，每组 `exact=true`、完整性 `ok`、FK 违规 0。五个输出各为 499712–524288 字节，约 0.5 MB/文件。与 TMX 的逐字符比较不预先 trim、归一化或改写换行；保护性 markup 拒绝已回放。补充 3 条 en-US → zh-CN 反向记录，覆盖 CRLF/emoji/补充汉字/空侧/双空；实际浏览器胶水 `index.mjs` 与同一 SQLite WASM 已在 Node 中初始化、禁用 OPFS（`opfs=false`），自回读通过，仍不计作浏览器端到端。
+- 原始 TMX header 为 `srclang=en-US`，参考原生 SDLTM 为 zh-CN → en-US；本次 183 对 180 的样本比较显式采用 **zh → en 工作方向**。另用统一 LF 并 trim 的口径比较原生参考记录，180 条全部在输出中，三条额外记录是第 9 组第 42 条与第 20 组第 20 条双空、第 10 组第 20 条中文空而英文非空；该英文 trim 后为 121 字符，不当作原始 TMX 字段长度。TMX 默认导入规则已改为显式选项优先，再取有效中英 header，无可用 header 时默认 zh → en；按实际 xml:lang 取文本，方向不改写内容，UI 可反转。
+- TMX 导入已有自动/zh-en/en-zh 选项；当前项目的明确方向 select 复用 `swapDirection`，同步到 TMX/RTF/SDLTM 导出；双文档对齐原有方向 select，RTF 保留左列语言选择。`.cache/corpus/direction-replay.log` 对第 19 组 30 条核对 auto-header en→zh、explicit zh→en、explicit en→zh、manual-swap en→zh，四条均为 TMX exact、RTF exact 和 SDLTM 本地自回读通过，locale 保留；2 段翻译结果转项目的范围覆盖回放通过。
+- 既有技术文档的 30 TU 第三方读取、44 TU 结构/回读经验仍仅作为实现依据，不与本次 183 条检查混记。输出未复制用户 token 数据，20 表/25 个普通 SQL 索引也不证明专有 fuzzy/token 或原生检索能力。
+- SDLTM 导出入口和确认区的小字统一为 **「不保证兼容 Trados」**。原生打开、TMX 导出、精确/模糊检索、编辑保存和重新打开仍作为后续独立兼容性检查；未完成不阻止已获授权的实验输出，也不能宣称已经原生兼容。
+- 类型检查、lint、Vite 生产构建已通过，SDLTM Worker 与导出 UI 已接入。当前运行证据层级为本地代码/模型/WASM 回放及 Node SQLite 独立核验；页面 Worker、文件选择/下载、IndexedDB、PC/手机端端到端、性能/断网、专业保留集 F1 和 Trados 打开/检索/编辑继续待验。
 
 ## 二十四、本机 Whisper STT 与移动端支持（2026-11-06）
 

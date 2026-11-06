@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { InputArea } from './components/InputArea/InputArea';
 import { ResultArea } from './components/ResultArea/ResultArea';
 import { Lightbox } from './components/Lightbox/Lightbox';
 import { RealtimeTranslation } from './components/RealtimeTranslation/RealtimeTranslation';
 import { useTranslationStore } from './store/translationStore';
+
+const CorpusTools = lazy(() => import('./components/CorpusTools/CorpusTools'));
 
 function App() {
   const { 
@@ -14,7 +16,7 @@ function App() {
   } = useTranslationStore();
   
   const [mobileSamplesOpen, setMobileSamplesOpen] = useState(false);
-  const [activeView, setActiveView] = useState<'translate' | 'realtime'>('translate');
+  const [activeView, setActiveView] = useState<'translate' | 'realtime' | 'corpus'>('translate');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (
     localStorage.getItem('silvite-theme') === 'dark' ? 'dark' : 'light'
   ));
@@ -37,6 +39,10 @@ function App() {
     setMobileSamplesOpen(false);
     setActiveView('realtime');
   };
+  const openCorpus = () => {
+    setMobileSamplesOpen(false);
+    setActiveView('corpus');
+  };
 
   const hasResult = result || isLoading;
 
@@ -47,7 +53,7 @@ function App() {
       {/* Sidebar - hidden on small screens; samples open in a drawer.
           Desktop: fixed-width floating panel, rounded, clipped by itself. */}
       <div className="hidden md:block w-[280px] flex-shrink-0 rounded-[10px] overflow-hidden">
-        <Sidebar onNewChat={handleNewChat} onRealtime={openRealtime} />
+        <Sidebar onNewChat={handleNewChat} onRealtime={openRealtime} onCorpus={openCorpus} onSamplePicked={() => setActiveView('translate')} />
       </div>
       
       {/* Mobile samples drawer */}
@@ -65,7 +71,8 @@ function App() {
                 setMobileSamplesOpen(false);
               }}
               onRealtime={openRealtime}
-              onSamplePicked={() => setMobileSamplesOpen(false)}
+              onCorpus={openCorpus}
+              onSamplePicked={() => { setMobileSamplesOpen(false); setActiveView('translate'); }}
             />
           </div>
         </div>
@@ -88,7 +95,7 @@ function App() {
               </svg>
               菜单
             </button>
-            <h2 className="text-[16px] sm:text-[19px] font-semibold text-[#1a1a1a] truncate">{activeView === 'realtime' ? '实时翻译' : 'Translate Lab'}</h2>
+            <h2 className="text-[16px] sm:text-[19px] font-semibold text-[#1a1a1a] truncate">{activeView === 'realtime' ? '实时翻译' : activeView === 'corpus' ? '中英语料工具' : 'Translate Lab'}</h2>
             <span className="text-[11px] sm:text-[13px] text-[#888888] bg-[#f5f5f5] px-2 py-0.5 sm:px-3 sm:py-1 rounded-full flex-shrink-0">
               实验版
             </span>
@@ -97,7 +104,11 @@ function App() {
         
         {/* Content area - scrollable */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
-          {activeView === 'realtime' ? <RealtimeTranslation onBack={() => setActiveView('translate')} /> : (
+          {activeView === 'corpus' ? (
+            <Suspense fallback={<p role="status" className="p-7 text-[14px] text-[#777777]">正在打开语料工具…</p>}>
+              <CorpusTools onBack={() => setActiveView('translate')} />
+            </Suspense>
+          ) : activeView === 'realtime' ? <RealtimeTranslation onBack={() => setActiveView('translate')} /> : (
           <>
           {/* Workspace: mobile starts near the top; desktop stays centered */}
           <div className="min-h-full flex justify-start md:items-center md:justify-center px-4 py-6 md:px-10 md:py-10">
@@ -161,7 +172,7 @@ function App() {
                 /* Translation state */
                 <div className="w-full">
                   <InputArea />
-                  <ResultArea />
+                  <ResultArea onOpenCorpus={openCorpus} />
                 </div>
               )}
             </div>
