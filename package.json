@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "prepare:whisper": "node scripts/prepare-whisper.mjs",
-    "predev": "npm run prepare:whisper",
+    "prepare:asr": "node scripts/prepare-asr.mjs",
+    "predev": "npm run prepare:asr",
     "dev": "vite",
     "api": "node --env-file=.env.local --experimental-strip-types scripts/local-api.ts",
     "test": "node --test tests/*.test.mjs",
-    "prebuild": "npm run prepare:whisper",
+    "prebuild": "npm run prepare:asr",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"

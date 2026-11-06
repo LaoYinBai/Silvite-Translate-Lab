@@ -81,9 +81,9 @@ Chat Completions 地址为 `https://api.deepseek.com/chat/completions`。
 `GET /api/models` 在服务端读取网关模型列表，只返回两个已配置的目标模型；
 不会透出完整模型目录、网关请求地址、Key 或上游错误正文。
 
-DeepSeek / GLM 用于识别后的文字翻译。Whisper 继续在浏览器本机识别音频，
+DeepSeek / GLM 用于识别后的文字翻译。Zipformer 在浏览器本机持续识别音频，
 在线 MiMo ASR 继续使用官方 `mimo-v2.5-asr` 和 `MIMO_API_KEY`。
-仅转文字的 Whisper 模式无需上述 API Key，也不会调用翻译接口。
+仅转文字的本机模式无需上述 API Key，也不会调用翻译接口。实现与资源见 [中英流式 STT](realtime-zipformer.md)。
 
 本地开发复制 `.env.example` 为 `.env.local` 并填写相同变量，运行 `npm run api`；
 本地适配器已透传两家供应商的全部配置。

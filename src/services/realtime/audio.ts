@@ -186,6 +186,7 @@ export interface AudioCapture {
   prepare?(): Promise<void>;
   start(onSamples: (samples: Float32Array, sampleRate: number, startTime: number) => void): Promise<void>;
   setPaused(paused: boolean): void;
+  flush?(): Promise<void>;
   stop(flush?: boolean): Promise<void>;
 }
 
@@ -197,6 +198,7 @@ export class BrowserMicrophoneCapture implements AudioCapture {
   private muted: GainNode | null = null;
   private callback: ((samples: Float32Array, sampleRate: number, startTime: number) => void) | null = null;
   private captureEpoch = 0;
+  private paused = false;
 
   // Unlock Web Audio in the original tap/click, before a model download can
   // consume Safari's user activation. This does not open the microphone.
@@ -216,6 +218,7 @@ export class BrowserMicrophoneCapture implements AudioCapture {
     const context = this.context;
     if (!context) throw new Error('无法启动音频采集。');
     this.callback = onSamples;
+    this.paused = false;
     this.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     this.captureEpoch = performance.now() - context.currentTime * 1000;
     await context.audioWorklet.addModule('/audio-capture-processor.js');
@@ -237,28 +240,38 @@ export class BrowserMicrophoneCapture implements AudioCapture {
   }
 
   setPaused(paused: boolean) {
+    if (this.paused === paused) return;
+    this.paused = paused;
     if (this.stream) for (const track of this.stream.getAudioTracks()) track.enabled = !paused;
+    this.worklet?.port.postMessage({ type: 'pause', paused });
   }
 
-  async stop(flush = true) {
+  async flush() {
     const context = this.context;
     const worklet = this.worklet;
-    if (flush && context?.state === 'running' && worklet) {
+    if (context?.state === 'running' && worklet) {
       await new Promise<void>((resolve) => {
-        const timer = window.setTimeout(resolve, 250);
         const previous = worklet.port.onmessage;
+        const finish = () => { window.clearTimeout(timer); worklet.port.onmessage = previous; resolve(); };
+        const timer = window.setTimeout(finish, 250);
         worklet.port.onmessage = (event) => {
           previous?.call(worklet.port, event);
-          if (event.data?.type === 'flush-complete') { window.clearTimeout(timer); resolve(); }
+          if (event.data?.type === 'flush-complete') finish();
         };
         worklet.port.postMessage({ type: 'flush' });
       });
     }
+  }
+
+  async stop(flush = true) {
+    const context = this.context;
+    if (flush) await this.flush();
     this.callback = null;
     this.source?.disconnect(); this.worklet?.disconnect(); this.muted?.disconnect();
     for (const track of this.stream?.getTracks() || []) track.stop();
     this.stream = null; this.source = null; this.worklet = null; this.muted = null;
     this.context = null;
+    this.paused = false;
     await context?.close().catch(() => undefined);
   }
 }

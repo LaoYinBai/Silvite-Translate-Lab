@@ -13,12 +13,37 @@ import type { AudioChunkerOptions } from './audio';
 
 export interface ASRPreparation { message: string; progress?: number }
 
+export interface StreamingTranscript {
+  utteranceId: string;
+  revision: number;
+  text: string;
+  final: boolean;
+  startTime: number;
+  endTime: number;
+  latencyMs: number;
+}
+
+export interface StreamingASRHandlers {
+  onTranscript: (event: StreamingTranscript) => void;
+  onPending: (bufferedMs: number) => void;
+  onError: (error: Error) => void;
+}
+
+// A future Android bridge can implement this same text-event contract. Browser
+// capture and decoding stay separate from subtitle/translation scheduling.
+export interface ASRAudioStream {
+  push(samples: Float32Array, startTime: number): void;
+  finish(): Promise<void>;
+  dispose(): void;
+}
+
 export interface ASRProvider {
   readonly execution?: 'local' | 'remote';
   readonly chunkOptions?: AudioChunkerOptions;
   prepare?(onProgress: (progress: ASRPreparation) => void, signal?: AbortSignal): Promise<void>;
   dispose?(): void;
-  transcribe(
+  openStream?(handlers: StreamingASRHandlers, signal: AbortSignal): Promise<ASRAudioStream>;
+  transcribe?(
     request: RealtimeAudioRequest,
     handlers: RealtimeASRHandlers,
     signal?: AbortSignal,
