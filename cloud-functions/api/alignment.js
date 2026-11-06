@@ -115,14 +115,17 @@ export async function onRequest({ request, env = {} }) {
 
   try {
     let input;
+    let bodyText;
     try {
-      input = JSON.parse(await readBoundedText(request, MAX_ALIGNMENT_REQUEST_BYTES, controller.signal));
+      bodyText = await readBoundedText(request, MAX_ALIGNMENT_REQUEST_BYTES, controller.signal);
     } catch (error) {
       if (controller.signal.aborted) throw error;
-      return jsonResponse({ error: error?.message === 'BODY_TOO_LARGE' ? 'REQUEST_TOO_LARGE' : 'INVALID_REQUEST' },
+      return jsonResponse({ error: error?.message === 'BODY_TOO_LARGE' ? 'REQUEST_TOO_LARGE' : 'INVALID_REQUEST_BODY' },
         error?.message === 'BODY_TOO_LARGE' ? 413 : 400, headers);
     }
-    if (!validInput(input)) return jsonResponse({ error: 'INVALID_REQUEST' }, 400, headers);
+    try { input = JSON.parse(bodyText); }
+    catch { return jsonResponse({ error: 'INVALID_JSON' }, 400, headers); }
+    if (!validInput(input)) return jsonResponse({ error: 'INVALID_ALIGNMENT_INPUT' }, 400, headers);
 
     let provider;
     try { provider = resolveProvider(input.model, env); }

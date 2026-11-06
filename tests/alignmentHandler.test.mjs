@@ -57,3 +57,24 @@ test('AI alignment sends both complete passages to DeepSeek when the cloud reque
   assert.ok(upstream.body.messages[1].content.includes(sourceText));
   assert.ok(upstream.body.messages[1].content.includes(targetText));
 });
+
+test('alignment endpoint distinguishes malformed JSON from valid JSON with invalid fields', async () => {
+  const request = (body, ip) => {
+    const value = new Request('https://silvite.test/api/alignment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-forwarded-for': ip },
+      body,
+    });
+    Object.defineProperty(value, 'signal', { value: undefined });
+    return value;
+  };
+  globalThis.fetch = async () => { throw new Error('invalid input must not call DeepSeek'); };
+
+  const malformed = await onRequest({ request: request('{broken', '192.0.2.231') });
+  assert.equal(malformed.status, 400);
+  assert.equal((await malformed.json()).error, 'INVALID_JSON');
+
+  const invalid = await onRequest({ request: request(JSON.stringify({ sourceText: 'Hello' }), '192.0.2.232') });
+  assert.equal(invalid.status, 400);
+  assert.equal((await invalid.json()).error, 'INVALID_ALIGNMENT_INPUT');
+});
