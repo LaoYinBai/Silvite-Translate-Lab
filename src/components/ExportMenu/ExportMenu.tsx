@@ -102,7 +102,7 @@ export function ExportMenu() {
       {isOpen && (
         <div
           role="menu"
-          className="absolute right-0 top-full mt-1 w-44 bg-white border border-[#e0e0e0] rounded-lg shadow-md py-1 z-50"
+          className="absolute right-0 top-full mt-1 w-48 bg-white border border-[#e0e0e0] rounded-lg shadow-md py-1 z-50"
         >
           <button
             type="button"
@@ -127,6 +127,18 @@ export function ExportMenu() {
               <path d="M9.5 1.5V5H13" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
             </svg>
             导出 Word
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => handleExport('markdown')}
+            className="w-full px-3 py-2 text-left text-[13px] text-[#1a1a1a] hover:bg-[#f5f5f5] flex items-center gap-2"
+          >
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M4 1.5h5.5L13 5v9.5H4z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+              <path d="M9.5 1.5V5H13M6 8v3m0-3 1.5 2L9 8v3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            导出 Markdown
           </button>
         </div>
       )}

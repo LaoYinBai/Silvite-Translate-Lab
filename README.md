@@ -226,6 +226,7 @@ Notes 数据始终保留，可用于结果查看与导出。
 
 - 📄 PDF
 - 📝 Word `.docx`
+- 📑 Markdown `.md`
 
 导出直接在浏览器侧完成。
 
