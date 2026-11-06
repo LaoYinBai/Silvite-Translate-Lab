@@ -2,7 +2,7 @@ import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { createRequire } from 'node:module'
-import { createReadStream, existsSync } from 'node:fs'
+import { createReadStream, existsSync, statSync } from 'node:fs'
 import { cp } from 'node:fs/promises'
 import path from 'node:path'
 
@@ -53,19 +53,46 @@ function pdfjsAssets(): Plugin {
   }
 }
 
+// ONNX imports its runtime module dynamically. Serve generated assets directly
+// in dev too, including models prepared after the dev server was started.
+function whisperRuntimeAssets(): Plugin {
+  return {
+    name: 'whisper-runtime-assets',
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        const url = (request.url ?? '').split('?')[0]
+        if (!url.startsWith('/whisper/')) return next()
+        const assetRoot = path.join(server.config.publicDir, 'whisper')
+        const filePath = path.resolve(assetRoot, url.slice('/whisper/'.length))
+        if (!filePath.startsWith(`${assetRoot}${path.sep}`) || !existsSync(filePath)) return next()
+        const stat = statSync(filePath)
+        if (!stat.isFile()) return next()
+        const mime = { '.mjs': 'text/javascript', '.json': 'application/json', '.wasm': 'application/wasm' }
+        response.setHeader('Content-Type', mime[path.extname(filePath) as keyof typeof mime] ?? 'application/octet-stream')
+        response.setHeader('Content-Length', stat.size)
+        if (request.method === 'HEAD') return response.end()
+        createReadStream(filePath).pipe(response)
+      })
+    },
+  }
+}
+
 // Root base path: deployed via EdgeOne Pages custom domain, not GitHub Pages subpath.
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
     pdfjsAssets(),
+    whisperRuntimeAssets(),
   ],
   base: '/',
+  worker: { format: 'es' },
   build: {
     outDir: 'dist',
     sourcemap: false,
   },
   server: {
+    watch: { ignored: ['**/public/whisper/**', '**/.cache/whisper/**'] },
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

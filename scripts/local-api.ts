@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { onRequest } from '../cloud-functions/api/translate.js';
 import { onRequest as onRealtimeTranscribe } from '../cloud-functions/api/realtime/transcribe.js';
 import { onRequest as onRealtimeTranslate } from '../cloud-functions/api/realtime/translate.js';
+import { onRequest as onModels } from '../cloud-functions/api/models.js';
 
 const PORT = 3001;
 
@@ -29,6 +30,10 @@ const server = createServer(async (req, res) => {
     params: {},
     env: {
       MIMO_API_KEY: process.env.MIMO_API_KEY,
+      DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
+      DEEPSEEK_BASE_URL: process.env.DEEPSEEK_BASE_URL,
+      DEEPSEEK_MAX_COMPLETION_TOKENS: process.env.DEEPSEEK_MAX_COMPLETION_TOKENS,
+      DEEPSEEK_BUDGET_PARAM: process.env.DEEPSEEK_BUDGET_PARAM,
       SERVICE_ENABLED: process.env.SERVICE_ENABLED,
       RATE_LIMIT: process.env.RATE_LIMIT,
       RATE_LIMIT_WINDOW_MS: process.env.RATE_LIMIT_WINDOW_MS,
@@ -46,7 +51,9 @@ const server = createServer(async (req, res) => {
       ? onRealtimeTranscribe
       : url.pathname === '/api/realtime/translate'
         ? onRealtimeTranslate
-        : onRequest;
+        : url.pathname === '/api/models'
+          ? onModels
+          : onRequest;
     const response = await handler(context);
     const responseHeaders: Record<string, string> = {};
     response.headers.forEach((value, key) => {

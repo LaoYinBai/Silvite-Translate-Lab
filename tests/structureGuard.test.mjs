@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { onRequest, countBlocks, hasBlockLoss } from '../cloud-functions/api/translate.js';
 import { mimoSseResponse, readSseEvents, finalEventOf, makeRequest } from './helpers.mjs';
 
-const ENV = { MIMO_API_KEY: 'test-key', RATE_LIMIT: '10' };
+const ENV = { DEEPSEEK_API_KEY: 'test-key', RATE_LIMIT: '10' };
 
 beforeEach(() => {
   globalThis.fetch = async () => {

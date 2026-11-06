@@ -59,13 +59,13 @@ test('pages are translated in order and joined with page breaks', async () => {
 test('the selected model is forwarded to every page request', async () => {
   const models = [];
   await translatePdfAsImages(
-    { file: scanFile(), model: 'glm' },
+    { file: scanFile(), model: 'deepseek' },
     {
       openSource: async () => sourceWith(3),
       translatePage: async (request) => { models.push(request.model); return okResponse('ok'); },
     },
   );
-  assert.deepEqual(models, ['glm', 'glm', 'glm']);
+  assert.deepEqual(models, ['deepseek', 'deepseek', 'deepseek']);
 });
 
 test('each page request says which page it is', async () => {  const contexts = [];

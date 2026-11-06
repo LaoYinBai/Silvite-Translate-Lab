@@ -2590,27 +2590,72 @@ PDF 进入图片校验并被拒（「不支持的文件格式，请使用 JPG、
 
 ---
 
-## 二十二、多模型 Provider 抽象（2026-09-11）
+## 二十二、多模型 Provider 抽象（2026-11-06 更新）
 
-服务端支持并列多 provider：`PROVIDER_DEFINITIONS` / `resolveProvider()` 负责端点、凭据、
+服务端 `cloud-functions/api/providers.mjs` 中的 `PROVIDER_DEFINITIONS` / `resolveProvider()` 负责端点、凭据、
 模型 id、请求形状与输出上限；**Silvite SSE 契约、重试预算、JSON 校验、Prompt 组装、
 完成预算策略全部共享**，各 provider 对客户端行为一致。
 
-- **当前状态：前端不提供模型选择入口**（GLM-4.6V-Flash 实测不稳定，先撤回 UI）。
-  前端不发送 `model` 字段，服务端按 `DEFAULT_PROVIDER_ID` 使用 MiMo。客户端类型
-  `TranslationRequest.model`、服务层 `translateDocument` / `translatePdfAsImages` 的
-  `model` 参数、以及服务端 provider 注册表与 `GLM_*` 环境变量全部保留；
-  恢复入口只需在前端加回一处控件，底层无需改动。
-
-- 新增环境变量：`GLM_API_KEY`（可选）；可选覆盖 `GLM_MODEL` / `GLM_BASE_URL` /
-  `GLM_MAX_COMPLETION_TOKENS` / `GLM_BUDGET_PARAM`。MiMo 生成模型固定为
-  `mimo-v2.6-flash`；API Key 与预算/端点仍使用原服务端环境变量。
+- **当前状态：翻译候选仅为 DeepSeek Flash / GLM 5.3 Flash。** 浏览器与服务端默认选择
+  DeepSeek Flash，输入区和实时翻译页共用模型选择；`model` 透传到图片、文档每块、PDF 每页
+  和实时字幕。不传 `model` 或传未知值时使用 DeepSeek。
+- 新增服务端环境变量：`DEEPSEEK_API_KEY`；`DEEPSEEK_BASE_URL` /
+  `DEEPSEEK_MAX_COMPLETION_TOKENS` / `DEEPSEEK_BUDGET_PARAM`。默认模型 `deepseek-flash`，
+  预算字段 `max_tokens`。地址支持基础地址或完整 `/chat/completions` 地址。
+  两个模型固定使用已验证的请求 ID，共用 `DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL`，
+  不读取旧 `GLM_*` / `DEEPSEEK_MODEL` 路由覆盖变量。
+  MiMo 仅保留在线 ASR 的 `MIMO_API_KEY`。配置已透传本地 API。
 - 未知 provider id 回落默认 provider；已选 provider 缺 key 时返回 500 并指明 provider，
   不会发起上游请求，也不会静默改用其他 provider。
-- MiMo 仍收 `thinking:{type:"disabled"}`；GLM 不接收该参数。GLM 的输出预算参数按
-  OpenAI 兼容约定用 `max_tokens`，**尚未经真实调用验证**，首次联调若 400 只需改这一处
-  （或设 `GLM_BUDGET_PARAM`）。
-- 证据：`tests/providerSelection.test.mjs`(7) 覆盖路由/鉴权/形状/上限/回落/缺 key；
-  `tests/documentPipeline.test.mjs` 与 `tests/pdfVision.test.mjs` 各增一例断言 model 透传到
-  每个分块与每一页。真实 HTTP 复验：`model=glm` 无 key → 500 指名 provider；不传 model →
-  MiMo 正常；`model=gpt-5` → 回落 MiMo。**GLM 真实上游调用未验证（缺 key）。**
+- 两家翻译都发送 `thinking:{type:"disabled"}`，保持 SSE 输出。DeepSeek 参数已核对
+  官方 Chat Completions 文档，使用“不思考”；普通翻译也拒绝把 `aborted` 等非正常结束
+  的内容作为完整结果。在线 MiMo ASR 和浏览器 Whisper 的识别流程继续使用各自引擎。
+- 已通过云端服务端环境变量实际请求网关 `/models`，确认 `deepseek-flash` 和
+  `glm-5.3-flash` 均存在；`GET /api/models` 仅返回这两个已配置模型 ID，不返回 Key。
+- 完整配置、官方接口依据和兼容边界见 [模型供应商配置](docs/model-providers.md)。
+
+---
+
+## 二十三、静态浏览器语料工具开发方案（2026-11-06）
+
+**状态：已完成调研和真实样本结构分析，功能待实现。** 面向翻译专业学生的个人学习场景，增加“语料工具”，提供 TMX / RTF / SDLTM 转换和中英双文档对齐，共用预览、拆分、合并、留空、人工锚点及校正界面。
+
+转换、SQLite、对齐和模型推理均在浏览器 JS / WASM / Worker 内执行，资源自托管、按需加载；成品不依赖 Trados、Glossary Converter、Python、Node 服务或本机转换程序。现有在线翻译/STT 的服务端依赖不属于这项转换功能的运行条件。
+
+完整任务、文件边界、公共接口与验收见 [浏览器语料工具实施计划](docs/superpowers/plans/2026-11-06-browser-corpus-tools.md)。技术依据和社区实现见 [调研报告](docs/research/2026-11-06-static-conversion-and-alignment.md)，真实样本的 [摘要](docs/research/2026-11-06-sample-inventory.json) 与 [SDLTM schema](docs/research/2026-11-06-sdltm-schema.sql) 一并作为开发参考。
+
+实施顺序：统一双语模型与编辑器 → TMX/常见双栏 RTF 双向转换 → SDLTM 读取 → 自动对齐与人工复核 → SDLTM 写出实验及原生验收 → 静态交付。RTF 同时区分双语表格、普通单语和旧 Trados 特殊格式，不能仅按扩展名套用同一解析流程。
+
+用户五组真实样本有 183 个 RTF/TMX 行、180 条 SDLTM TU；三条差异包含空侧数据，必须保留并明确提示。五份 SDLTM 均为 20 表、25 个显式索引，超过旧空模板的结构；int64 必须精确读写。模板可以指导 schema，但不能生成新文本对应的 Trados 哈希、分词或模糊索引。SDLTM 写出须以原生打开、导出、精确/模糊检索、编辑和重新打开为完成标准，不能仅凭 SQLite 可读或第三方导出成功宣称完全兼容。
+
+## 二十四、本机 Whisper STT 与移动端支持（2026-11-06）
+
+当前工作区接入多语 Whisper Tiny：在浏览器 Worker 内使用本机 GPU / CPU 推理，默认“仅转文字”；
+桌面 GPU 优先，触控设备默认 CPU 兼容模式。WASM、模型和配置由构建脚本准备并随静态站点发布，
+运行时不依赖本机 Whisper 服务或模型 CDN。开启双语翻译后仅识别文字调用现有翻译接口。
+为满足 EdgeOne Pages 单文件上限，模型以最大 20 MB 静态分片交付，在浏览器中校验并重组。
+
+手机与 PC 共用流程，提供模型加载/取消、设备选择、麦克风授权、暂停/继续及字幕确认；移动端入口改为“菜单”，
+先在用户点击中解锁 AudioContext，避免模型加载导致移动 Safari 丢失手势。真实手机的持续性能和麦克风尚需验收。
+
+线上检查发现 MiMo STT 对有效中英文音频均返回 502，原因是直接读取缺失的 `Request.signal.aborted`。
+本地已兼容无 signal 的云请求，并修复音频窗口丢尾部采样及暂停状态被覆盖的问题。**本地改动尚未部署，
+不能据此称线上 STT 已恢复。**
+
+资源版本、部署步骤和质量边界见 [Whisper 静态交付](docs/realtime-whisper.md)，检查证据见
+[STT 验证记录](docs/research/2026-11-06-stt-verification.md)。
+
+## 二十五、转写后的流式同传社区调研（2026-11-06）
+
+已阅读 WhisperStreaming、SimulStreaming、WhisperLiveKit、NoLanguageLeftWaiting、AlignAtt4LLM
+的源码与协议，并核对 Transformers.js 3.8.1 在浏览器 Worker 内使用 TextStreamer 的官方翻译示例。
+研究结论及固定快照见 [流式同传调研](docs/research/2026-11-06-streaming-interpretation.md)。
+
+本地代码已完成第一阶段流式字幕改造：ASR 与翻译分别消费；合并同一句的过时草稿，保留句末任务并按序处理。
+MiMo 上游使用 `stream: true`，客户端消费带语段/修订/请求标识的 SSE；草稿可以修订，只有句末有效完成才确认。
+界面区分等待、生成、草稿、确认、失败，并可逐段/批量重试。标点、静音、停止和有界长语段触发确认；
+翻译失败不将本机识别标成断网。手机 CPU 配置、仅转文字不上传模式继续可选。
+
+本轮类型检查、生产构建与 lint 已通过；未运行自动测试，未部署，未进行真实 MiMo/手机真机联调。
+实现入口、协议与验收边界见 [流式字幕实施记录](docs/realtime-streaming.md)。需要模型注意力的 AlignAtt
+无法从现有黑盒文本接口直接复现；浏览器文字翻译模型与语音播报仍待后续评估。

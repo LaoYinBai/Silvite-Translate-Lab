@@ -7,16 +7,16 @@ afterEach(() => { globalThis.fetch = originalFetch; });
 const env = { DEEPSEEK_API_KEY: 'catalog-test-key', DEEPSEEK_BASE_URL: 'https://gateway.example/v1' };
 const request = (method = 'GET') => new Request('https://local.example/api/models', { method });
 
-test('gateway catalog returns only the requested families and preserves exact IDs', async () => {
+test('gateway catalog returns only the two selected models and preserves exact IDs', async () => {
   let upstream;
   globalThis.fetch = async (url, init) => {
     upstream = { url: String(url), headers: init.headers };
-    return Response.json({ data: [{ id: 'gateway/GLM-5.3-Flash' }, { id: 'deepseek-flash' }, { id: 'unrelated-model' }] });
+    return Response.json({ data: [{ id: 'glm-5.3-flash' }, { id: 'deepseek-flash' }, { id: 'deepseek-v4-pro' }, { id: 'deepseek-v4.1-flash' }, { id: 'unrelated-model' }] });
   };
   const response = await onRequest({ request: request(), env });
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { models: [
-    { id: 'gateway/GLM-5.3-Flash', provider: 'glm' }, { id: 'deepseek-flash', provider: 'deepseek' },
+    { id: 'deepseek-flash', provider: 'deepseek' }, { id: 'glm-5.3-flash', provider: 'glm' },
   ] });
   assert.equal(upstream.url, 'https://gateway.example/v1/models');
   assert.equal(upstream.headers.Authorization, 'Bearer catalog-test-key');

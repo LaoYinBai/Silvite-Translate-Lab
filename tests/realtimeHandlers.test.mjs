@@ -85,6 +85,26 @@ test('ASR endpoint rejects malformed audio before contacting Xiaomi', async () =
   assert.equal(calls, 0);
 });
 
+test('ASR endpoint accepts the deployed cloud request without an AbortSignal', async () => {
+  let upstreamCalls = 0;
+  globalThis.fetch = async (_url, init) => {
+    upstreamCalls += 1;
+    assert.ok(init.signal instanceof AbortSignal, 'upstream still has its own cancellation signal');
+    return new Response('data: {"choices":[{"delta":{"content":"你好。"}}]}\n\ndata: [DONE]\n\n', {
+      headers: { 'Content-Type': 'text/event-stream' },
+    });
+  };
+  const request = makeRequest('/api/realtime/transcribe', {
+    audioDataUrl: makeWavDataUrl(), language: 'zh', sequence: 9,
+  }, '192.0.2.19');
+  // EdgeOne's deployed Request does not expose the standard signal property.
+  Object.defineProperty(request, 'signal', { value: undefined });
+  const response = await transcribe({ request, env: { MIMO_API_KEY: 'test-only-key' } });
+  assert.equal(response.status, 200);
+  assert.equal(customEvents(await response.text()).at(-1).text, '你好。');
+  assert.equal(upstreamCalls, 1);
+});
+
 test('ASR endpoint does not finalize a partial transcript on unexpected clean EOF', async () => {
   globalThis.fetch = async () => new Response('data: {"choices":[{"delta":{"content":"partial transcript"}}]}\n\n', {
     headers: { 'Content-Type': 'text/event-stream' },
@@ -100,11 +120,11 @@ test('ASR endpoint does not finalize a partial transcript on unexpected clean EO
   assert.equal(events.at(-1).code, 'ASR_STREAM_INTERRUPTED');
 });
 
-test('realtime translation uses MiMo V2.6 Flash with thinking disabled and bounded context', async () => {
+test('realtime translation streams DeepSeek Flash with thinking disabled and bounded context', async () => {
   let upstreamRequest;
   globalThis.fetch = async (url, init) => {
     upstreamRequest = { url: String(url), headers: init.headers, body: JSON.parse(init.body) };
-    return Response.json({ choices: [{ message: { content: '光链路保持稳定。' } }] });
+    return new Response('data: {"choices":[{"delta":{"content":"光链路保持稳定。"}}]}\n\ndata: [DONE]\n\n', { headers: { 'Content-Type': 'text/event-stream' } });
   };
   const response = await translateRealtime({
     request: makeRequest('/api/realtime/translate', {
@@ -121,24 +141,49 @@ test('realtime translation uses MiMo V2.6 Flash with thinking disabled and bound
         source: `source ${index}`, translation: `translation ${index}`,
       })),
     }, '192.0.2.12'),
-    env: { MIMO_API_KEY: 'test-only-key' },
+    env: { DEEPSEEK_API_KEY: 'test-only-key' },
   });
-  const result = await response.json();
+  const events = customEvents(await response.text());
 
   assert.equal(response.status, 200);
-  assert.equal(upstreamRequest.url, 'https://api.xiaomimimo.com/v1/chat/completions');
+  assert.equal(upstreamRequest.url, 'https://api.deepseek.com/chat/completions');
   assert.equal(upstreamRequest.headers.Authorization, 'Bearer test-only-key');
-  assert.equal(upstreamRequest.body.model, 'mimo-v2.6-flash');
+  assert.equal(upstreamRequest.body.model, 'deepseek-flash');
   assert.deepEqual(upstreamRequest.body.thinking, { type: 'disabled' });
-  assert.equal(upstreamRequest.body.stream, false);
-  assert.ok(upstreamRequest.body.max_completion_tokens <= 1024);
+  assert.equal(upstreamRequest.body.stream, true);
+  assert.ok(upstreamRequest.body.max_tokens <= 1024);
   const userMessage = upstreamRequest.body.messages[1].content;
   assert.match(userMessage, /光链路/);
   assert.match(userMessage, /source 11/);
   assert.doesNotMatch(userMessage, /source 0"/);
-  assert.equal(result.translation, '光链路保持稳定。');
-  assert.equal(result.sequence, 3);
-  assert.equal(result.revision, 4);
+  assert.deepEqual(events.map((event) => event.type), ['start', 'delta', 'final']);
+  assert.equal(events.at(-1).text, '光链路保持稳定。');
+  assert.equal(events.at(-1).sequence, 3);
+  assert.equal(events.at(-1).revision, 4);
+});
+
+test('GLM realtime translation shares gateway credentials and streams with thinking disabled', async () => {
+  let upstreamRequest;
+  globalThis.fetch = async (url, init) => {
+    upstreamRequest = { url: String(url), headers: init.headers, body: JSON.parse(init.body) };
+    return new Response('data: {"choices":[{"delta":{"content":"早上好。"},"finish_reason":"stop"}]}\n\n');
+  };
+  const response = await translateRealtime({
+    request: makeRequest('/api/realtime/translate', {
+      model: 'glm', sourceText: 'Good morning.', sourceLanguage: 'en', targetLanguage: 'zh',
+      stage: 'confirmed', sequence: 1, revision: 1,
+    }, '192.0.2.150'),
+    env: { DEEPSEEK_API_KEY: 'gateway-test-key', DEEPSEEK_BASE_URL: 'https://gateway.example/v1' },
+  });
+  assert.equal(response.status, 200);
+  const events = customEvents(await response.text());
+  assert.equal(upstreamRequest.url, 'https://gateway.example/v1/chat/completions');
+  assert.equal(upstreamRequest.headers.Authorization, 'Bearer gateway-test-key');
+  assert.equal(upstreamRequest.body.model, 'glm-5.3-flash');
+  assert.equal(upstreamRequest.body.max_tokens, 1024);
+  assert.deepEqual(upstreamRequest.body.thinking, { type: 'disabled' });
+  assert.equal(events.at(-1).type, 'final');
+  assert.equal(events.at(-1).text, '早上好。');
 });
 
 test('realtime API surfaces 429 without leaking provider response content', async () => {
@@ -148,7 +193,7 @@ test('realtime API surfaces 429 without leaking provider response content', asyn
       sourceText: 'Hello', sourceLanguage: 'en', targetLanguage: 'zh',
       stage: 'confirmed', sequence: 1, revision: 1,
     }, '192.0.2.13'),
-    env: { MIMO_API_KEY: 'test-only-key' },
+    env: { DEEPSEEK_API_KEY: 'test-only-key' },
   });
   assert.equal(response.status, 429);
   const result = await response.json();
@@ -162,15 +207,16 @@ test('realtime translation refuses internal JSON, including explanation-prefixed
     'Here is the result: {"translation":"private"}',
     '{"translation":"partial',
   ]) {
-    globalThis.fetch = async () => Response.json({ choices: [{ message: { content } }] });
+    globalThis.fetch = async () => new Response(`data: {"choices":[{"delta":{"content":${JSON.stringify(content)}}}]}\n\ndata: [DONE]\n\n`, { headers: { 'Content-Type': 'text/event-stream' } });
     const response = await translateRealtime({
       request: makeRequest('/api/realtime/translate', {
         sourceText: 'Hello.', sourceLanguage: 'en', targetLanguage: 'zh',
         stage: 'provisional', sequence: 6, revision: 2,
       }, `192.0.2.${20 + content.length % 200}`),
-      env: { MIMO_API_KEY: 'test-only-key' },
+      env: { DEEPSEEK_API_KEY: 'test-only-key' },
     });
-    assert.equal(response.status, 502);
-    assert.equal((await response.json()).error, 'INVALID_TRANSLATION');
+    assert.equal(response.status, 200);
+    const events = customEvents(await response.text());
+    assert.equal(events.at(-1).type, 'error');
   }
 });

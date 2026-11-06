@@ -4,14 +4,18 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "prepare:whisper": "node scripts/prepare-whisper.mjs",
+    "predev": "npm run prepare:whisper",
     "dev": "vite",
     "api": "node --env-file=.env.local --experimental-strip-types scripts/local-api.ts",
     "test": "node --test tests/*.test.mjs",
+    "prebuild": "npm run prepare:whisper",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@huggingface/transformers": "3.8.1",
     "docx": "^9.7.1",
     "jspdf": "^4.2.1",
     "mammoth": "^1.12.2",

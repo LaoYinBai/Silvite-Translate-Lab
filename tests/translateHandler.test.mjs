@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { onRequest } from '../cloud-functions/api/translate.js';
 import { mimoSseResponse, readSseEvents, finalEventOf, makeRequest } from './helpers.mjs';
 
-const ENV = { MIMO_API_KEY: 'test-key', RATE_LIMIT: '10' };
+const ENV = { DEEPSEEK_API_KEY: 'test-key', RATE_LIMIT: '10' };
 
 beforeEach(() => {
   globalThis.fetch = async () => {
@@ -11,10 +11,10 @@ beforeEach(() => {
   };
 });
 
-test('academic mode reaches MiMo with academic prompt, context and terminology', async () => {
+test('academic mode reaches DeepSeek with academic prompt, context and terminology', async () => {
   let captured;
   globalThis.fetch = async (url, init) => {
-    assert.equal(String(url).startsWith('https://api.xiaomimimo.com/v1/chat/completions'), true);
+    assert.equal(String(url).startsWith('https://api.deepseek.com/chat/completions'), true);
     captured = JSON.parse(init.body);
     return mimoSseResponse(JSON.stringify({
       source_language: 'en',
@@ -33,7 +33,7 @@ test('academic mode reaches MiMo with academic prompt, context and terminology',
   const events = await readSseEvents(response);
 
   assert.equal(response.status, 200);
-  assert.equal(captured.model, 'mimo-v2.6-flash');
+  assert.equal(captured.model, 'deepseek-flash');
   assert.equal(captured.stream, true);
   assert.equal(captured.thinking.type, 'disabled');
   assert.match(captured.messages[0].content, /学术与技术模式/);
@@ -304,7 +304,7 @@ test('stream interruption resets provisional text and retries with the same budg
   const budgets = [];
   globalThis.fetch = async (url, init) => {
     calls++;
-    budgets.push(JSON.parse(init.body).max_completion_tokens);
+    budgets.push(JSON.parse(init.body).max_tokens);
     if (calls === 2) {
       return mimoSseResponse(JSON.stringify({
         source_language: 'en',
@@ -373,7 +373,7 @@ test('stream EOF without finish reason retries with the same budget', async () =
   const budgets = [];
   globalThis.fetch = async (url, init) => {
     calls++;
-    budgets.push(JSON.parse(init.body).max_completion_tokens);
+    budgets.push(JSON.parse(init.body).max_tokens);
     if (calls === 2) {
       return mimoSseResponse(JSON.stringify({
         source_language: 'en',

@@ -6,10 +6,18 @@ import {
   type RealtimeAudioRequest,
   type RealtimeTranslationRequest,
   type RealtimeTranslationResult,
+  type RealtimeTranslationHandlers,
 } from '../../api/realtimeClient';
 import type { RetryNotice } from './retry';
+import type { AudioChunkerOptions } from './audio';
+
+export interface ASRPreparation { message: string; progress?: number }
 
 export interface ASRProvider {
+  readonly execution?: 'local' | 'remote';
+  readonly chunkOptions?: AudioChunkerOptions;
+  prepare?(onProgress: (progress: ASRPreparation) => void, signal?: AbortSignal): Promise<void>;
+  dispose?(): void;
   transcribe(
     request: RealtimeAudioRequest,
     handlers: RealtimeASRHandlers,
@@ -22,6 +30,7 @@ export interface TranslationProvider {
     request: RealtimeTranslationRequest,
     signal?: AbortSignal,
     onRetry?: (notice: RetryNotice) => void,
+    handlers?: RealtimeTranslationHandlers,
   ): Promise<RealtimeTranslationResult>;
 }
 
@@ -36,8 +45,8 @@ export class XiaomiRealtimeASRProvider implements ASRProvider {
   }
 }
 
-export class XiaomiRealtimeTranslationProvider implements TranslationProvider {
-  translate(request: RealtimeTranslationRequest, signal?: AbortSignal, onRetry?: (notice: RetryNotice) => void) {
-    return translateRealtimeSegment(request, signal, onRetry);
+export class ServerRealtimeTranslationProvider implements TranslationProvider {
+  translate(request: RealtimeTranslationRequest, signal?: AbortSignal, onRetry?: (notice: RetryNotice) => void, handlers?: RealtimeTranslationHandlers) {
+    return translateRealtimeSegment(request, signal, onRetry, handlers);
   }
 }

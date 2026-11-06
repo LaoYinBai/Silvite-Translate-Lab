@@ -1,0 +1,708 @@
+{
+  "date": "2026-11-06",
+  "purpose": "Read-only sample analysis and format reference; no browser conversion or native Trados validation performed.",
+  "sourceDirectory": "local sample directory",
+  "samples": [
+    {
+      "group": "10",
+      "files": [
+        {
+          "file": "26政府工作报告10.rtf",
+          "size": 55060,
+          "sha256": "954f1ad755c0e1e87a40ac5054d7f4cfe2f10df62383326158325383cce92415"
+        },
+        {
+          "file": "26政府工作报告10.sdltm",
+          "size": 573440,
+          "sha256": "8239b63cb8cbee6656b0410c86f9431d353d6cdb8750ad685c432ff86cbf911d"
+        },
+        {
+          "file": "26政府工作报告10.sdltm.log",
+          "size": 1426,
+          "sha256": "95721d7a8ab61cc7b269cb4a4bae02c4e33422b8a833b7ebeea7e95cd9f13c7f"
+        },
+        {
+          "file": "26政府工作报告10.tmx",
+          "size": 17755,
+          "sha256": "b08762f0280efcdfb0d1876db2b655fe357b3607674aae498f9b3b4e9427214d"
+        },
+        {
+          "file": "26政府工作报告10.zip",
+          "size": 60373,
+          "sha256": "91b77acaed607642589f9199d8bee070b2dfefa6a573f4ab2c279c49bce30dfe"
+        }
+      ],
+      "tmxHeader": {
+        "creationTool": "ABBYY Aligner",
+        "sourceLanguage": "en-US"
+      },
+      "rtf": {
+        "rowCount": 49,
+        "cellCount": 98,
+        "type": "bilingual-two-column-table",
+        "tradosSegmentationMarkers": false
+      },
+      "sdltm": {
+        "group": "10",
+        "tableCount": 20,
+        "explicitIndexCount": 25,
+        "schemaSha256": "6db2201b32022b77e2cd5a672203255c54660476421b1f47453b6aaf841b310c",
+        "unitsWithLastElement": 0,
+        "sourceLanguage": "zh-CN",
+        "targetLanguage": "en-US",
+        "unitCount": 48,
+        "tableCounts": {
+          "attributes": 1,
+          "date_attributes": 0,
+          "fuzzy_data": 48,
+          "numeric_attributes": 0,
+          "parameters": 5,
+          "picklist_attributes": 0,
+          "picklist_values": 0,
+          "resources": 0,
+          "string_attributes": 0,
+          "tm_resources": 0,
+          "trans_model": 0,
+          "trans_model_rev": 0,
+          "translation_memories": 1,
+          "translation_unit_contexts": 0,
+          "translation_unit_fragments": 48,
+          "translation_unit_idcontexts": 0,
+          "translation_units": 48,
+          "vocab_src": 0,
+          "vocab_trg": 0,
+          "vocabfilter": 0
+        },
+        "parameters": [
+          {
+            "name": "AlignmentDataVersion",
+            "value": "1"
+          },
+          {
+            "name": "FREQUENCYTOP",
+            "value": "1000"
+          },
+          {
+            "name": "TokenDataVersion",
+            "value": "1"
+          },
+          {
+            "name": "VERSION",
+            "value": "8.06"
+          },
+          {
+            "name": "VERSION_CREATED",
+            "value": "8.10"
+          }
+        ],
+        "tokenDataSummary": {
+          "sourceTokens": 48,
+          "targetTokens": 48,
+          "alignmentData": 0,
+          "tokenizationHashes": 48,
+          "sourceMin": 15,
+          "sourceMax": 83
+        },
+        "hashStats": {
+          "sourceMin": "274494781",
+          "sourceMax": "7800520676",
+          "targetMin": "284224385",
+          "targetMax": "7774964995",
+          "signature": "9077876807420713840"
+        }
+      },
+      "comparison": {
+        "tmxUnits": 49,
+        "sdltmUnits": 48,
+        "allSdltmPairsFoundInTmxAfterNewlineNormalizationAndTrim": true,
+        "tmxRowsAbsentFromSdltm": [
+          {
+            "row": 20,
+            "zhChars": 0,
+            "enChars": 122,
+            "emptyZh": true,
+            "emptyEn": false
+          }
+        ]
+      }
+    },
+    {
+      "group": "19",
+      "files": [
+        {
+          "file": "26政府工作报告19.rtf",
+          "size": 37704,
+          "sha256": "2fe244e10308f2fcf90b33e90e799910b2efee6ffee350cf9564380f8cd7f2fe"
+        },
+        {
+          "file": "26政府工作报告19.sdltm",
+          "size": 540672,
+          "sha256": "3331c312bfb0f70244352e65598171e2b74b9a597c5e56d18ae9235ef8304996"
+        },
+        {
+          "file": "26政府工作报告19.tmx",
+          "size": 12388,
+          "sha256": "c4c40b1d4b87b419e49bd8e8168f95e6a99e3eec2bc7f3ae2e319a027468b503"
+        },
+        {
+          "file": "26政府工作报告19.zip",
+          "size": 47379,
+          "sha256": "50125a70deafbd88aa9b6b875ba8152fe333b516bd815ab00d437fb4ee36bb11"
+        }
+      ],
+      "tmxHeader": {
+        "creationTool": "ABBYY Aligner",
+        "sourceLanguage": "en-US"
+      },
+      "rtf": {
+        "rowCount": 30,
+        "cellCount": 60,
+        "type": "bilingual-two-column-table",
+        "tradosSegmentationMarkers": false
+      },
+      "sdltm": {
+        "group": "19",
+        "tableCount": 20,
+        "explicitIndexCount": 25,
+        "schemaSha256": "6db2201b32022b77e2cd5a672203255c54660476421b1f47453b6aaf841b310c",
+        "unitsWithLastElement": 0,
+        "sourceLanguage": "zh-CN",
+        "targetLanguage": "en-US",
+        "unitCount": 30,
+        "tableCounts": {
+          "attributes": 1,
+          "date_attributes": 0,
+          "fuzzy_data": 30,
+          "numeric_attributes": 0,
+          "parameters": 5,
+          "picklist_attributes": 0,
+          "picklist_values": 0,
+          "resources": 0,
+          "string_attributes": 0,
+          "tm_resources": 0,
+          "trans_model": 0,
+          "trans_model_rev": 0,
+          "translation_memories": 1,
+          "translation_unit_contexts": 0,
+          "translation_unit_fragments": 30,
+          "translation_unit_idcontexts": 0,
+          "translation_units": 30,
+          "vocab_src": 0,
+          "vocab_trg": 0,
+          "vocabfilter": 0
+        },
+        "parameters": [
+          {
+            "name": "AlignmentDataVersion",
+            "value": "1"
+          },
+          {
+            "name": "FREQUENCYTOP",
+            "value": "1000"
+          },
+          {
+            "name": "TokenDataVersion",
+            "value": "1"
+          },
+          {
+            "name": "VERSION",
+            "value": "8.06"
+          },
+          {
+            "name": "VERSION_CREATED",
+            "value": "8.10"
+          }
+        ],
+        "tokenDataSummary": {
+          "sourceTokens": 30,
+          "targetTokens": 30,
+          "alignmentData": 0,
+          "tokenizationHashes": 30,
+          "sourceMin": 14,
+          "sourceMax": 196
+        },
+        "hashStats": {
+          "sourceMin": "987719556",
+          "sourceMax": "7849035519",
+          "targetMin": "642176884",
+          "targetMax": "7190808502",
+          "signature": "9077876807420713840"
+        }
+      },
+      "comparison": {
+        "tmxUnits": 30,
+        "sdltmUnits": 30,
+        "allSdltmPairsFoundInTmxAfterNewlineNormalizationAndTrim": true,
+        "tmxRowsAbsentFromSdltm": []
+      }
+    },
+    {
+      "group": "20",
+      "files": [
+        {
+          "file": "26政府工作报告20.rtf",
+          "size": 34040,
+          "sha256": "963a1fa5bee8583e8564742832d59d41c07fdd1384b370dbf7c3b4058ed71ebe"
+        },
+        {
+          "file": "26政府工作报告20.sdltm",
+          "size": 532480,
+          "sha256": "75fcec75932cbe4466a87c18797b107dee182ef09ccb4b2670ce2f75214945b4"
+        },
+        {
+          "file": "26政府工作报告20.sdltm.log",
+          "size": 821,
+          "sha256": "df7fdc4de7a1f3bd91b2fd20086bf5e83cd94490cee9c0f27fff6346cdc9d24f"
+        },
+        {
+          "file": "26政府工作报告20.tmx",
+          "size": 12436,
+          "sha256": "1bad24a1384da5d1c9eb5290ebd88c9d91b343fb182dcf566515501d1be56e13"
+        },
+        {
+          "file": "26政府工作报告20.zip",
+          "size": 48354,
+          "sha256": "07c936afc8618c830b7ca3a51aaad9c72907a3604f9295051f10066c1fbc59fb"
+        }
+      ],
+      "tmxHeader": {
+        "creationTool": "ABBYY Aligner",
+        "sourceLanguage": "en-US"
+      },
+      "rtf": {
+        "rowCount": 20,
+        "cellCount": 40,
+        "type": "bilingual-two-column-table",
+        "tradosSegmentationMarkers": false
+      },
+      "sdltm": {
+        "group": "20",
+        "tableCount": 20,
+        "explicitIndexCount": 25,
+        "schemaSha256": "6db2201b32022b77e2cd5a672203255c54660476421b1f47453b6aaf841b310c",
+        "unitsWithLastElement": 0,
+        "sourceLanguage": "zh-CN",
+        "targetLanguage": "en-US",
+        "unitCount": 19,
+        "tableCounts": {
+          "attributes": 1,
+          "date_attributes": 0,
+          "fuzzy_data": 19,
+          "numeric_attributes": 0,
+          "parameters": 5,
+          "picklist_attributes": 0,
+          "picklist_values": 0,
+          "resources": 0,
+          "string_attributes": 0,
+          "tm_resources": 0,
+          "trans_model": 0,
+          "trans_model_rev": 0,
+          "translation_memories": 1,
+          "translation_unit_contexts": 0,
+          "translation_unit_fragments": 19,
+          "translation_unit_idcontexts": 0,
+          "translation_units": 19,
+          "vocab_src": 0,
+          "vocab_trg": 0,
+          "vocabfilter": 0
+        },
+        "parameters": [
+          {
+            "name": "AlignmentDataVersion",
+            "value": "1"
+          },
+          {
+            "name": "FREQUENCYTOP",
+            "value": "1000"
+          },
+          {
+            "name": "TokenDataVersion",
+            "value": "1"
+          },
+          {
+            "name": "VERSION",
+            "value": "8.06"
+          },
+          {
+            "name": "VERSION_CREATED",
+            "value": "8.10"
+          }
+        ],
+        "tokenDataSummary": {
+          "sourceTokens": 19,
+          "targetTokens": 19,
+          "alignmentData": 0,
+          "tokenizationHashes": 19,
+          "sourceMin": 19,
+          "sourceMax": 311
+        },
+        "hashStats": {
+          "sourceMin": "503043109",
+          "sourceMax": "7222946430",
+          "targetMin": "1352590645",
+          "targetMax": "6956977843",
+          "signature": "9077876807420713840"
+        }
+      },
+      "comparison": {
+        "tmxUnits": 20,
+        "sdltmUnits": 19,
+        "allSdltmPairsFoundInTmxAfterNewlineNormalizationAndTrim": true,
+        "tmxRowsAbsentFromSdltm": [
+          {
+            "row": 20,
+            "zhChars": 0,
+            "enChars": 0,
+            "emptyZh": true,
+            "emptyEn": true
+          }
+        ]
+      }
+    },
+    {
+      "group": "25",
+      "files": [
+        {
+          "file": "26政府工作报告25.rtf",
+          "size": 49343,
+          "sha256": "6add03945d200cd05b69268160043da89960ca6a5929da2e33ad27cb893639fe"
+        },
+        {
+          "file": "26政府工作报告25.sdltm",
+          "size": 557056,
+          "sha256": "1b3d0620ef8d909e9ef679d7ff7b1563f6a363a6f5a0371484e6dfebed6f8f38"
+        },
+        {
+          "file": "26政府工作报告25.sdltm.log",
+          "size": 1272,
+          "sha256": "4184c54594db82cbd9114c6a5d1174ddd0bda7ff1a80b4c32b5d6182573e90da"
+        },
+        {
+          "file": "26政府工作报告25.tmx",
+          "size": 16178,
+          "sha256": "1dfc112b20275341b4ca6652ecabe29b77f93808b21daac13b72a00cc34fed3f"
+        },
+        {
+          "file": "26政府工作报告25.zip",
+          "size": 56299,
+          "sha256": "3baeaf72718f1cde0e9703e67b423e417ab40349a65626b517a7cdc939e02242"
+        }
+      ],
+      "tmxHeader": {
+        "creationTool": "ABBYY Aligner",
+        "sourceLanguage": "en-US"
+      },
+      "rtf": {
+        "rowCount": 42,
+        "cellCount": 84,
+        "type": "bilingual-two-column-table",
+        "tradosSegmentationMarkers": false
+      },
+      "sdltm": {
+        "group": "25",
+        "tableCount": 20,
+        "explicitIndexCount": 25,
+        "schemaSha256": "6db2201b32022b77e2cd5a672203255c54660476421b1f47453b6aaf841b310c",
+        "unitsWithLastElement": 0,
+        "sourceLanguage": "zh-CN",
+        "targetLanguage": "en-US",
+        "unitCount": 42,
+        "tableCounts": {
+          "attributes": 1,
+          "date_attributes": 0,
+          "fuzzy_data": 42,
+          "numeric_attributes": 0,
+          "parameters": 5,
+          "picklist_attributes": 0,
+          "picklist_values": 0,
+          "resources": 0,
+          "string_attributes": 0,
+          "tm_resources": 0,
+          "trans_model": 0,
+          "trans_model_rev": 0,
+          "translation_memories": 1,
+          "translation_unit_contexts": 0,
+          "translation_unit_fragments": 42,
+          "translation_unit_idcontexts": 0,
+          "translation_units": 42,
+          "vocab_src": 0,
+          "vocab_trg": 0,
+          "vocabfilter": 0
+        },
+        "parameters": [
+          {
+            "name": "AlignmentDataVersion",
+            "value": "1"
+          },
+          {
+            "name": "FREQUENCYTOP",
+            "value": "1000"
+          },
+          {
+            "name": "TokenDataVersion",
+            "value": "1"
+          },
+          {
+            "name": "VERSION",
+            "value": "8.06"
+          },
+          {
+            "name": "VERSION_CREATED",
+            "value": "8.10"
+          }
+        ],
+        "tokenDataSummary": {
+          "sourceTokens": 42,
+          "targetTokens": 42,
+          "alignmentData": 0,
+          "tokenizationHashes": 42,
+          "sourceMin": 16,
+          "sourceMax": 84
+        },
+        "hashStats": {
+          "sourceMin": "864985825",
+          "sourceMax": "8194975491",
+          "targetMin": "544890424",
+          "targetMax": "7616741116",
+          "signature": "9077876807420713840"
+        }
+      },
+      "comparison": {
+        "tmxUnits": 42,
+        "sdltmUnits": 42,
+        "allSdltmPairsFoundInTmxAfterNewlineNormalizationAndTrim": true,
+        "tmxRowsAbsentFromSdltm": []
+      }
+    },
+    {
+      "group": "9",
+      "files": [
+        {
+          "file": "26政府工作报告9.rtf",
+          "size": 47624,
+          "sha256": "8eafd6b9ab100965cabe8049b521dc20156b640ddd31453727253c46ef613e8c"
+        },
+        {
+          "file": "26政府工作报告9.sdltm",
+          "size": 557056,
+          "sha256": "fb3639ccf977bb74040e3d63f50ab8088d48e9a9bd26d849ec5f09f1be30ddd3"
+        },
+        {
+          "file": "26政府工作报告9.sdltm.log",
+          "size": 1301,
+          "sha256": "778045870f392e6ec89f6382ec2c160e05fa6761855372e623e64eb6f01cc0be"
+        },
+        {
+          "file": "26政府工作报告9.tmx",
+          "size": 15003,
+          "sha256": "6a6b2113365d32d0ea648934d0de108e8f381946d696014afd280f37349e009e"
+        },
+        {
+          "file": "26政府工作报告9.zip",
+          "size": 53576,
+          "sha256": "55e2898e8119c50cb1c3ee13234197eafc55ab66ade34ac3a5d650357fe704df"
+        }
+      ],
+      "tmxHeader": {
+        "creationTool": "ABBYY Aligner",
+        "sourceLanguage": "en-US"
+      },
+      "rtf": {
+        "rowCount": 42,
+        "cellCount": 84,
+        "type": "bilingual-two-column-table",
+        "tradosSegmentationMarkers": false
+      },
+      "sdltm": {
+        "group": "9",
+        "tableCount": 20,
+        "explicitIndexCount": 25,
+        "schemaSha256": "6db2201b32022b77e2cd5a672203255c54660476421b1f47453b6aaf841b310c",
+        "unitsWithLastElement": 0,
+        "sourceLanguage": "zh-CN",
+        "targetLanguage": "en-US",
+        "unitCount": 41,
+        "tableCounts": {
+          "attributes": 1,
+          "date_attributes": 0,
+          "fuzzy_data": 41,
+          "numeric_attributes": 0,
+          "parameters": 5,
+          "picklist_attributes": 0,
+          "picklist_values": 0,
+          "resources": 0,
+          "string_attributes": 0,
+          "tm_resources": 0,
+          "trans_model": 0,
+          "trans_model_rev": 0,
+          "translation_memories": 1,
+          "translation_unit_contexts": 0,
+          "translation_unit_fragments": 41,
+          "translation_unit_idcontexts": 0,
+          "translation_units": 41,
+          "vocab_src": 0,
+          "vocab_trg": 0,
+          "vocabfilter": 0
+        },
+        "parameters": [
+          {
+            "name": "AlignmentDataVersion",
+            "value": "1"
+          },
+          {
+            "name": "FREQUENCYTOP",
+            "value": "1000"
+          },
+          {
+            "name": "TokenDataVersion",
+            "value": "1"
+          },
+          {
+            "name": "VERSION",
+            "value": "8.06"
+          },
+          {
+            "name": "VERSION_CREATED",
+            "value": "8.10"
+          }
+        ],
+        "tokenDataSummary": {
+          "sourceTokens": 41,
+          "targetTokens": 41,
+          "alignmentData": 0,
+          "tokenizationHashes": 41,
+          "sourceMin": 15,
+          "sourceMax": 83
+        },
+        "hashStats": {
+          "sourceMin": "1430506503",
+          "sourceMax": "7930825958",
+          "targetMin": "1263088627",
+          "targetMax": "7296512608",
+          "signature": "9077876807420713840"
+        }
+      },
+      "comparison": {
+        "tmxUnits": 42,
+        "sdltmUnits": 41,
+        "allSdltmPairsFoundInTmxAfterNewlineNormalizationAndTrim": true,
+        "tmxRowsAbsentFromSdltm": [
+          {
+            "row": 42,
+            "zhChars": 0,
+            "enChars": 0,
+            "emptyZh": true,
+            "emptyEn": true
+          }
+        ]
+      }
+    }
+  ],
+  "sharedUnitColumns": [
+    "id",
+    "guid",
+    "translation_memory_id",
+    "source_hash",
+    "source_segment",
+    "target_hash",
+    "target_segment",
+    "creation_date",
+    "creation_user",
+    "change_date",
+    "change_user",
+    "last_used_date",
+    "last_used_user",
+    "usage_counter",
+    "flags",
+    "source_token_data",
+    "target_token_data",
+    "alignment_data",
+    "align_model_date",
+    "insert_date",
+    "tokenization_sig_hash"
+  ],
+  "allTableColumnsEqual": true,
+  "allSqlDefinitionsEqual": true,
+  "officialTemplate": {
+    "source": "https://github.com/RWS/trados-studio-api-samples/blob/master/ProjectAutomation/Sdl.SDK.ProjectAutomation.Samples.Examples/SampleFiles/General%20En-Fr.sdltm",
+    "size": 245760,
+    "sha256": "d0e367a1de5d1ed9f65d9cd031e8d9c551cb5fe4ecb1a5ec948f5a5e2db70eaf",
+    "tables": [
+      "attributes",
+      "date_attributes",
+      "fuzzy_data",
+      "numeric_attributes",
+      "parameters",
+      "picklist_attributes",
+      "picklist_values",
+      "resources",
+      "string_attributes",
+      "tm_resources",
+      "translation_memories",
+      "translation_unit_contexts",
+      "translation_units"
+    ],
+    "counts": {
+      "translation_units": 0,
+      "fuzzy_data": 0
+    },
+    "memories": [
+      {
+        "name": "Software English-French",
+        "source_language": "en-US",
+        "target_language": "fr-FR",
+        "tucount": 0,
+        "fuzzy_indexes": 9
+      }
+    ],
+    "parameters": [
+      {
+        "name": "VERSION",
+        "value": "8.06"
+      },
+      {
+        "name": "FREQUENCYTOP",
+        "value": "1000"
+      }
+    ],
+    "unitColumns": [
+      "id",
+      "guid",
+      "translation_memory_id",
+      "source_hash",
+      "source_segment",
+      "target_hash",
+      "target_segment",
+      "creation_date",
+      "creation_user",
+      "change_date",
+      "change_user",
+      "last_used_date",
+      "last_used_user",
+      "usage_counter",
+      "flags"
+    ],
+    "additionalSampleTables": [
+      "trans_model",
+      "trans_model_rev",
+      "translation_unit_fragments",
+      "translation_unit_idcontexts",
+      "vocab_src",
+      "vocab_trg",
+      "vocabfilter"
+    ],
+    "additionalSampleUnitColumns": [
+      "source_token_data",
+      "target_token_data",
+      "alignment_data",
+      "align_model_date",
+      "insert_date",
+      "tokenization_sig_hash"
+    ]
+  },
+  "interpretationLimits": [
+    "Sample contents and derived indexes describe existing text; they are not an implementation for new text.",
+    "No assertion of general tagged-Segment support or preservation of all metadata.",
+    "No raw corpus text or personal creator/modifier fields copied into this inventory."
+  ]
+}

@@ -63,6 +63,8 @@ export function rmsForSamples(samples: Float32Array): number {
   return Math.sqrt(squares / samples.length);
 }
 
+export interface AudioChunkerOptions { chunkMs?: number; overlapMs?: number; silenceCommitMs?: number }
+
 export class RealtimeAudioChunker {
   private pending: Float32Array<ArrayBufferLike> = new Float32Array();
   private pendingStart = 0;
@@ -72,11 +74,19 @@ export class RealtimeAudioChunker {
   private silenceSamples = 0;
   private active = false;
   private lastTimestamp = 0;
-  private readonly windowSamples = Math.round(REALTIME_CONFIG.sampleRate * REALTIME_CONFIG.chunkMs / 1000);
-  private readonly overlapSamples = Math.round(REALTIME_CONFIG.sampleRate * REALTIME_CONFIG.overlapMs / 1000);
-  private readonly silenceLimit = Math.round(REALTIME_CONFIG.sampleRate * REALTIME_CONFIG.silenceCommitMs / 1000);
+  private readonly windowSamples: number;
+  private readonly overlapSamples: number;
+  private readonly silenceLimit: number;
   private readonly minSpeech = Math.round(REALTIME_CONFIG.sampleRate * REALTIME_CONFIG.minimumSpeechMs / 1000);
   private readonly preRollLimit = Math.round(REALTIME_CONFIG.sampleRate * REALTIME_CONFIG.preRollMs / 1000);
+
+  constructor(options: AudioChunkerOptions = {}) {
+    const config = { ...REALTIME_CONFIG, ...options };
+    this.windowSamples = Math.round(config.sampleRate * config.chunkMs / 1000);
+    this.overlapSamples = Math.round(config.sampleRate * config.overlapMs / 1000);
+    this.silenceLimit = Math.round(config.sampleRate * config.silenceCommitMs / 1000);
+    if (this.windowSamples <= this.overlapSamples || this.overlapSamples < 0) throw new Error('音频分段设置无效');
+  }
 
   push(samples: Float32Array, startTime = this.lastTimestamp): RealtimeAudioChunk[] {
     if (!samples.length) return [];
@@ -104,9 +114,10 @@ export class RealtimeAudioChunker {
 
     const emitted: RealtimeAudioChunk[] = [];
     while (this.pending.length >= this.windowSamples) {
+      // take() consumes pending, so preserve overlap plus tail before calling it.
+      const retained = this.pending.slice(this.windowSamples - this.overlapSamples);
       const chunk = this.take(this.windowSamples, 'window');
       emitted.push(chunk);
-      const retained = this.pending.slice(this.windowSamples - this.overlapSamples);
       this.pendingStart = chunk.startTime + (this.windowSamples - this.overlapSamples) / REALTIME_CONFIG.sampleRate * 1000;
       this.pending = retained;
     }
@@ -172,6 +183,7 @@ export class RealtimeAudioChunker {
 }
 
 export interface AudioCapture {
+  prepare?(): Promise<void>;
   start(onSamples: (samples: Float32Array, sampleRate: number, startTime: number) => void): Promise<void>;
   setPaused(paused: boolean): void;
   stop(flush?: boolean): Promise<void>;
@@ -186,19 +198,30 @@ export class BrowserMicrophoneCapture implements AudioCapture {
   private callback: ((samples: Float32Array, sampleRate: number, startTime: number) => void) | null = null;
   private captureEpoch = 0;
 
-  async start(onSamples: (samples: Float32Array, sampleRate: number, startTime: number) => void) {
+  // Unlock Web Audio in the original tap/click, before a model download can
+  // consume Safari's user activation. This does not open the microphone.
+  async prepare() {
     if (!navigator.mediaDevices?.getUserMedia || !('AudioWorkletNode' in window)) {
-      throw new Error('当前浏览器不支持实时麦克风采集，请更新浏览器后重试。');
+      throw new Error('当前页面无法采集麦克风，请使用 HTTPS 页面和新版浏览器。');
     }
+    if (!this.context) {
+      try { this.context = new AudioContext({ sampleRate: REALTIME_CONFIG.sampleRate }); }
+      catch { this.context = new AudioContext(); }
+    }
+    await this.context.resume();
+  }
+
+  async start(onSamples: (samples: Float32Array, sampleRate: number, startTime: number) => void) {
+    if (!this.context) await this.prepare();
+    const context = this.context;
+    if (!context) throw new Error('无法启动音频采集。');
     this.callback = onSamples;
-    this.captureEpoch = performance.now();
     this.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
-    try { this.context = new AudioContext({ sampleRate: REALTIME_CONFIG.sampleRate }); }
-    catch { this.context = new AudioContext(); }
-    await this.context.audioWorklet.addModule('/audio-capture-processor.js');
-    this.source = this.context.createMediaStreamSource(this.stream);
-    this.worklet = new AudioWorkletNode(this.context, 'silvite-audio-capture', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1 });
-    this.muted = this.context.createGain();
+    this.captureEpoch = performance.now() - context.currentTime * 1000;
+    await context.audioWorklet.addModule('/audio-capture-processor.js');
+    this.source = context.createMediaStreamSource(this.stream);
+    this.worklet = new AudioWorkletNode(context, 'silvite-audio-capture', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 1 });
+    this.muted = context.createGain();
     this.muted.gain.value = 0;
     this.worklet.port.onmessage = ({ data }) => {
       if (data?.type === 'samples' && data.samples instanceof Float32Array) {
@@ -209,8 +232,8 @@ export class BrowserMicrophoneCapture implements AudioCapture {
     };
     this.source.connect(this.worklet);
     this.worklet.connect(this.muted);
-    this.muted.connect(this.context.destination);
-    await this.context.resume();
+    this.muted.connect(context.destination);
+    await context.resume();
   }
 
   setPaused(paused: boolean) {

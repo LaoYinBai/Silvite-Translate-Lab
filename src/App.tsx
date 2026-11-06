@@ -80,13 +80,13 @@ function App() {
             <button
               type="button"
               onClick={() => setMobileSamplesOpen(true)}
-              aria-label="打开演示样本"
-              className="md:hidden flex items-center gap-1.5 h-9 px-3 text-[13px] font-medium text-[#1a1a1a] border border-[#e0e0e0] rounded-lg hover:bg-[#f5f5f5] transition-colors flex-shrink-0"
+              aria-label="打开工具与演示菜单"
+              className="md:hidden flex items-center gap-1.5 h-11 px-3 text-[13px] font-medium text-[#1a1a1a] border border-[#e0e0e0] rounded-lg hover:bg-[#f5f5f5] transition-colors flex-shrink-0"
             >
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                 <path d="M2 3.5h12M2 8h12M2 12.5h8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
               </svg>
-              样本
+              菜单
             </button>
             <h2 className="text-[16px] sm:text-[19px] font-semibold text-[#1a1a1a] truncate">{activeView === 'realtime' ? '实时翻译' : 'Translate Lab'}</h2>
             <span className="text-[11px] sm:text-[13px] text-[#888888] bg-[#f5f5f5] px-2 py-0.5 sm:px-3 sm:py-1 rounded-full flex-shrink-0">

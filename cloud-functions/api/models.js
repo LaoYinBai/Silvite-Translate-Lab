@@ -1,8 +1,8 @@
-import { resolveProvider } from './providers.mjs';
+import { resolveProvider, listProviders } from './providers.mjs';
 import { corsHeaders, jsonResponse, checkRealtimeRateLimit } from './realtime/common.mjs';
 
 // Query the configured gateway on the server; never return credentials or the
-// unrestricted gateway catalog. Only the requested translation families qualify.
+// unrestricted gateway catalog. Only the two configured translation models qualify.
 export async function onRequest({ request, env = {} }) {
   const headers = {
     ...corsHeaders(env.ALLOWED_ORIGIN || request.headers.get('Origin') || '*'),
@@ -34,11 +34,9 @@ export async function onRequest({ request, env = {} }) {
     const body = await response.json();
     if (!Array.isArray(body.data)) return jsonResponse({ error: 'INVALID_MODEL_CATALOG' }, 502, headers);
     const ids = [...new Set(body.data.map((item) => item?.id).filter((id) => typeof id === 'string'))];
-    const models = ids.flatMap((id) => {
-      const normalized = id.toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (normalized.includes('glm53flash')) return [{ id, provider: 'glm' }];
-      if (normalized.includes('deepseek')) return [{ id, provider: 'deepseek' }];
-      return [];
+    const models = listProviders().flatMap((candidate) => {
+      const id = candidate.model;
+      return ids.includes(id) ? [{ id, provider: candidate.id }] : [];
     });
     return jsonResponse({ models }, 200, headers);
   } catch {
