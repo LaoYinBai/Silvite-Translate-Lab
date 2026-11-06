@@ -179,7 +179,7 @@ function ClearButton({ inputText, inputImage, hasDocument, onClear, className }:
 }
 
 function TranslateButton({ className = '' }: { className?: string }) {
-  const { inputText, inputImage, documentFile, isLoading } = useTranslationStore();
+  const { inputText, inputImage, documentFile, isLoading, fileStatus } = useTranslationStore();
   const overLimit = inputText.length > MAX_INPUT_CHARS;
   const hasInput = Boolean(documentFile)
     || Boolean(inputImage)
@@ -187,7 +187,7 @@ function TranslateButton({ className = '' }: { className?: string }) {
   return (
     <button
       onClick={() => useTranslationStore.getState().translate()}
-      disabled={!hasInput || isLoading}
+      disabled={!hasInput || isLoading || fileStatus === 'parsing'}
       className={`btn btn-primary ${className}`}
     >
       {isLoading ? (
@@ -242,10 +242,22 @@ export function InputArea() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [attachmentMessage, setAttachmentMessage] = useState<AttachmentMessage | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const attachmentGeneration = useRef(0);
+  const pendingFile = useRef<File | null>(null);
+  useEffect(() => () => {
+    attachmentGeneration.current += 1;
+    const file = pendingFile.current, state = useTranslationStore.getState();
+    if (file && state.documentSourceFile === file && state.fileStatus === 'parsing') {
+      state.setDocumentSourceFile(null); state.setFileStatus('idle');
+    }
+    pendingFile.current = null;
+  }, []);
   
   // One attachment at a time: an incoming file replaces whatever was attached,
   // which keeps the pipeline decision unambiguous and matches chat-style input.
   const dropAttachment = useCallback(() => {
+    attachmentGeneration.current += 1;
+    pendingFile.current = null;
     setInputImage(null);
     setDocumentFile(null);
     setDocumentSourceFile(null);
@@ -262,26 +274,43 @@ export function InputArea() {
       setAttachmentMessage({ tone: 'error', text: '图片过大，最大支持 10MB' });
       return;
     }
-    
+    dropAttachment();
+    const generation = attachmentGeneration.current;
+    pendingFile.current = file;
+    setDocumentSourceFile(file); setFileStatus('parsing');
+    const current = () => attachmentGeneration.current === generation && useTranslationStore.getState().documentSourceFile === file;
     try {
       const base64 = await compressToDataUrl(file);
-      dropAttachment();
+      if (!current()) return;
+      pendingFile.current = null;
+      setDocumentSourceFile(null); setFileStatus('idle');
       setInputImage(base64);
     } catch (err) {
+      if (!current()) return;
+      pendingFile.current = null;
+      setDocumentSourceFile(null); setFileStatus('idle');
       setAttachmentMessage({ tone: 'error', text: err instanceof Error ? err.message : '图片处理失败' });
     }
-  }, [dropAttachment, setInputImage]);
+  }, [dropAttachment, setInputImage, setDocumentSourceFile, setFileStatus]);
 
   const processDocument = useCallback(async (file: File) => {
+    setAttachmentMessage(null);
     dropAttachment();
+    const generation = attachmentGeneration.current;
+    pendingFile.current = file;
+    const current = () => attachmentGeneration.current === generation && useTranslationStore.getState().documentSourceFile === file;
     // Kept so a PDF without a usable text layer can still be translated by
     // rendering its pages as images.
     setDocumentSourceFile(file);
     setFileStatus('parsing');
     try {
       const parsed = await parseDocumentFile(file);
+      if (!current()) return;
+      pendingFile.current = null;
       setDocumentFile(parsed);
     } catch (error) {
+      if (!current()) return;
+      pendingFile.current = null;
       setDocumentFile(null);
       setFileStatus(
         'error',
@@ -372,6 +401,7 @@ export function InputArea() {
   }, []);
 
   const handleTranslate = useCallback(() => {
+    if (useTranslationStore.getState().fileStatus === 'parsing') return;
     if (inputText.length > MAX_INPUT_CHARS) return;
     if (!documentFile && !inputImage && !inputText.trim()) return;
     useTranslationStore.getState().translate();
@@ -386,12 +416,9 @@ export function InputArea() {
   
   const handleClear = useCallback(() => {
     setInputText('');
-    setInputImage(null);
-    setDocumentFile(null);
-    setDocumentSourceFile(null);
-    setFileStatus('idle');
+    dropAttachment();
     setAttachmentMessage(null);
-  }, [setDocumentFile, setDocumentSourceFile, setFileStatus, setInputText, setInputImage]);
+  }, [dropAttachment, setInputText]);
 
   // Offered only for the "no usable text layer" failures, and only while the
   // original file is still attached.
@@ -582,7 +609,7 @@ export function InputArea() {
               <ClearButton
                 inputText={inputText}
                 inputImage={inputImage}
-                hasDocument={Boolean(documentFile)}
+                hasDocument={Boolean(documentFile) || fileStatus === 'parsing'}
                 onClear={handleClear}
                 className="btn btn-ghost h-11 px-3"
               />
@@ -611,7 +638,7 @@ export function InputArea() {
               <ClearButton
                 inputText={inputText}
                 inputImage={inputImage}
-                hasDocument={Boolean(documentFile)}
+                hasDocument={Boolean(documentFile) || fileStatus === 'parsing'}
                 onClear={handleClear}
                 className="btn btn-ghost h-[36px] px-3"
               />
@@ -680,7 +707,7 @@ export function InputArea() {
           instructing the user; details stay in the tooltip. */}
       <p
         className="mt-2 px-1 text-[12px] leading-[1.6] text-[#b0b0b0]"
-        title={`Office 文件最大 ${Math.round(MAX_OFFICE_FILE_SIZE / (1024 * 1024))}MB，其他文档最大 ${Math.round(MAX_DOCUMENT_FILE_SIZE / (1024 * 1024))}MB，图片最大 10MB；提取正文最多 100,000 字符`}
+        title={`DOC / PPT / PPTX / XLSX 最大 ${Math.round(MAX_OFFICE_FILE_SIZE / (1024 * 1024))}MB，TXT / PDF / DOCX 等文档最大 ${Math.round(MAX_DOCUMENT_FILE_SIZE / (1024 * 1024))}MB，图片最大 10MB；提取正文最多 100,000 字符`}
       >
         支持 {INPUT_FORMAT_SUMMARY}
       </p>
