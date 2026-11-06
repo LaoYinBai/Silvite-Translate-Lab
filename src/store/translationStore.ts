@@ -450,8 +450,10 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       // A newer session started meanwhile: this result is stale.
       if (!isCurrent()) return;
 
+      let lastPublished: TranslationResult | null = null;
       await publishTranslationResult(response, inputMode === 'image' ? response.detected_text || '' : documentText, controller.signal, (result) => {
-        if (!isCurrent()) return;
+        if (!isCurrent() || lastPublished && get().result !== lastPublished) return;
+        lastPublished = result;
         set({
           result,
           isLoading: false,
@@ -524,8 +526,10 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
       });
 
       if (!isCurrent()) return;
+      let lastPublished: TranslationResult | null = null;
       await publishTranslationResult(response, response.detected_text || '', controller.signal, (result) => {
-        if (!isCurrent()) return;
+        if (!isCurrent() || lastPublished && get().result !== lastPublished) return;
+        lastPublished = result;
         set({
           result,
           isLoading: false,
