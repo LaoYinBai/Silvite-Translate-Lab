@@ -420,7 +420,7 @@ SSE 事件协议返回（`text/event-stream`）。前端使用统一事件协议
 - `jsPDF`
 - `docx`
 
-在浏览器侧生成 PDF 与 Word 文档。
+在浏览器侧生成 PDF、Word 与 Markdown 文件。
 
 ## 📄 文件输入
 
