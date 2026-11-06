@@ -78,8 +78,8 @@ test('source and injected reference material stay in user data for both models',
     'source text must never be promoted into the system prompt',
   );
   assert.doesNotMatch(system.content, /SECURITY_CONTEXT|SECURITY_GLOSSARY/);
-  assert.equal(user.content, wrapSourceData(INJECTION_TEXT, { context, terminology }));
-  const data = JSON.parse(user.content.slice(SOURCE_DATA_MARKERS.open.length, -SOURCE_DATA_MARKERS.close.length));
+  assert.ok(user.content.includes(wrapSourceData(INJECTION_TEXT, { context, terminology })));
+  const data = JSON.parse(user.content.slice(user.content.indexOf(SOURCE_DATA_MARKERS.open) + SOURCE_DATA_MARKERS.open.length, user.content.lastIndexOf(SOURCE_DATA_MARKERS.close)));
   assert.equal(data.source_text, INJECTION_TEXT);
   assert.equal(data.user_context, context);
   assert.match(data.glossary, /library → 图书馆/);

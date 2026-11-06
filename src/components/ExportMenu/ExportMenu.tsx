@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { effectiveInputMode, useTranslationStore } from '../../store/translationStore';
+import { useTranslationStore } from '../../store/translationStore';
 import { exportTranslation, type ExportFormat, type TranslationExportData } from '../../services/export';
 
 export function ExportMenu() {
@@ -7,9 +7,10 @@ export function ExportMenu() {
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [includeNotes, setIncludeNotes] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const { result, isDemoMode, inputText, inputImage, documentFile, mode, context, terminology } = useTranslationStore();
+  const { result, isDemoMode } = useTranslationStore();
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -26,18 +27,8 @@ export function ExportMenu() {
   function buildExportData(): TranslationExportData {
     if (!result) throw new Error('没有可导出的翻译结果');
     return {
-      sourceLanguage: result.sourceLanguage,
-      targetLanguage: result.targetLanguage,
-      mode,
-      sourceText: effectiveInputMode({ documentFile, inputImage }) === 'file'
-        ? documentFile?.text || ''
-        : inputText || result.detectedText || '',
       translation: result.translation,
-      detectedText: result.detectedText,
-      context: context || undefined,
-      terminology: terminology || undefined,
       notes: result.notes,
-      segments: result.segments,
       generatedAt: new Date(),
     };
   }
@@ -49,7 +40,7 @@ export function ExportMenu() {
     setError(null);
     try {
       const data = buildExportData();
-      await exportTranslation(data, format);
+      await exportTranslation(data, format, { includeNotes });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 1500);
     } catch (err) {
@@ -102,8 +93,21 @@ export function ExportMenu() {
       {isOpen && (
         <div
           role="menu"
-          className="absolute right-0 top-full mt-1 w-48 bg-white border border-[#e0e0e0] rounded-lg shadow-md py-1 z-50"
+          className="absolute right-0 top-full mt-1 w-52 bg-white border border-[#e0e0e0] rounded-lg shadow-md py-1 z-50"
         >
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={includeNotes}
+            onClick={() => setIncludeNotes(!includeNotes)}
+            className="w-full px-3 py-2 text-left text-[13px] text-[#1a1a1a] hover:bg-[#f5f5f5] flex items-center gap-2"
+          >
+            <span className={`w-4 h-4 rounded border flex items-center justify-center ${includeNotes ? 'bg-[#1677ff] border-[#1677ff] text-white' : 'border-[#bfbfbf]'}`} aria-hidden="true">
+              {includeNotes && <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="m3 8 3 3 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+            </span>
+            附带翻译说明
+          </button>
+          <div role="separator" className="my-1 border-t border-[#e0e0e0]" />
           <button
             type="button"
             role="menuitem"
