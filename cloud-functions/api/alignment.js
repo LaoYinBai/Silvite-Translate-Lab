@@ -116,12 +116,21 @@ export async function onRequest({ request, env = {} }) {
   try {
     let input;
     let bodyText;
+    const declaredLength = request.headers.get('content-length');
+    if (declaredLength && /^\d+$/.test(declaredLength) && Number(declaredLength) > MAX_ALIGNMENT_REQUEST_BYTES) {
+      return jsonResponse({ error: 'REQUEST_TOO_LARGE' }, 413, headers);
+    }
     try {
-      bodyText = await readBoundedText(request, MAX_ALIGNMENT_REQUEST_BYTES, controller.signal);
+      // Use the runtime's Request body reader, which also powers request.json()
+      // in the other EdgeOne handlers. Its exposed body stream is not reliable
+      // in every EdgeOne invocation, even though Request.text() works there.
+      bodyText = await request.text();
     } catch (error) {
       if (controller.signal.aborted) throw error;
-      return jsonResponse({ error: error?.message === 'BODY_TOO_LARGE' ? 'REQUEST_TOO_LARGE' : 'INVALID_REQUEST_BODY' },
-        error?.message === 'BODY_TOO_LARGE' ? 413 : 400, headers);
+      return jsonResponse({ error: 'INVALID_REQUEST_BODY' }, 400, headers);
+    }
+    if (new TextEncoder().encode(bodyText).byteLength > MAX_ALIGNMENT_REQUEST_BYTES) {
+      return jsonResponse({ error: 'REQUEST_TOO_LARGE' }, 413, headers);
     }
     try { input = JSON.parse(bodyText); }
     catch { return jsonResponse({ error: 'INVALID_JSON' }, 400, headers); }
