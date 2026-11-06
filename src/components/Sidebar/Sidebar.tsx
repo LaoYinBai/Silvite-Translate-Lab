@@ -7,9 +7,10 @@ interface SidebarProps {
   onSamplePicked?: () => void;
   onRealtime?: () => void;
   onCorpus?: () => void;
+  onHistory?: () => void;
 }
 
-export function Sidebar({ onNewChat, onSamplePicked, onRealtime, onCorpus }: SidebarProps) {
+export function Sidebar({ onNewChat, onSamplePicked, onRealtime, onCorpus, onHistory }: SidebarProps) {
   const { isServiceOnline } = useTranslationStore();
 
   return (
@@ -61,6 +62,12 @@ export function Sidebar({ onNewChat, onSamplePicked, onRealtime, onCorpus }: Sid
         <button type="button" onClick={onCorpus} className="w-full min-h-11 flex items-center gap-2.5 px-3 rounded-lg border border-[#e4e6ea] bg-white text-[13px] font-medium text-[#555555] hover:bg-[#f9fafb] transition-colors">
           <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M2.5 3h6v14h-6zM11.5 3h6v14h-6zM5 7h1M5 10h1M14 7h1M14 10h1M8.5 10h3" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>
           中英语料工具 <span className="ml-auto text-[10px] text-[#888888]">TMX / RTF / SDLTM</span>
+        </button>
+      </div>}
+      {onHistory && <div className="px-2.5 pb-2.5">
+        <button type="button" onClick={onHistory} className="w-full min-h-11 flex items-center gap-2.5 px-3 rounded-lg border border-[#e4e6ea] bg-white text-[13px] font-medium text-[#555555] hover:bg-[#f9fafb] transition-colors">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 5V2.5M3 5h2.5M3 5a7 7 0 111 10M10 6v4l2.5 1.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          翻译历史 <span className="ml-auto text-[10px] text-[#888888]">仅此浏览器</span>
         </button>
       </div>}
       {/* Demo samples - explicitly labeled, not fake history */}

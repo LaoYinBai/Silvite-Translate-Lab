@@ -21,60 +21,76 @@ export function CorpusDialog({ title, children, close, error }: { title: string;
   </dialog>;
 }
 
-function SideEditor({ side, label, disabled, onSave, onXml }: {
-  side: UnitVariant; label: string; disabled: boolean; onSave: (text: string) => boolean; onXml: () => void;
+function SideEditor({ side, label, disabled, onSave }: {
+  side: UnitVariant; label: string; disabled: boolean; onSave: (text: string) => boolean;
 }) {
   const [draft, setDraft] = useState({ original: side.text, value: side.text });
   const text = draft.original === side.text ? draft.value : side.text;
   return <div className="min-w-0">
-    <div className="mb-1 flex items-center justify-between gap-2"><span className="text-[11px] font-medium text-[#888888]">{label}</span>
-      {side.markup !== undefined && <button type="button" disabled={disabled} onClick={onXml} className="min-h-9 text-[11px] text-[#1677ff]">编辑标签 XML</button>}</div>
+    <p className="mb-1 text-[11px] font-medium text-[#888888]">{label}</p>
     <textarea aria-label={label} value={text} onChange={event => setDraft({ original: side.text, value: event.target.value })}
       onBlur={() => {
         if (text === side.text || onSave(text)) setDraft({ original: side.text, value: side.text });
       }} readOnly={side.markup !== undefined} disabled={disabled}
       rows={Math.max(2, Math.min(8, side.text.split('\n').length + Math.floor(side.text.length / 90)))}
       placeholder="此侧为空；内容不会被自动删除" className={FIELD + ' resize-y leading-6 [overflow-wrap:anywhere]'} />
-    {side.markup !== undefined && <p className="mt-1 text-[10px] text-[#888888]">保留了行内标签，请在 XML 编辑器中修改文字。</p>}
+    {side.markup !== undefined && <p className="mt-1 text-[10px] text-[#888888]">含受保护的行内标签，请在“更多调整”中选择“编辑标签 XML”修改文字。</p>}
     {text !== side.text && <p className="mt-1 text-[10px] text-[#ad6800]">此处尚有未保存修改；离开输入框后应用，失败时草稿会保留。</p>}
   </div>;
 }
 
-const CorpusRow = memo(function CorpusRow({ unit, index, sourceLanguage, targetLanguage, selected, busy, canAnchor, operate, onSplit, onXml }: {
-  unit: BilingualUnit; index: number; sourceLanguage: string; targetLanguage: string; selected: boolean; busy: boolean; canAnchor: boolean;
+const CorpusRow = memo(function CorpusRow({ unit, index, nextId, sourceLanguage, targetLanguage, selected, busy, canAnchor, operate, onSplit, onXml }: {
+  unit: BilingualUnit; index: number; nextId?: string; sourceLanguage: string; targetLanguage: string; selected: boolean; busy: boolean; canAnchor: boolean;
   operate: Operation; onSplit: (id: string) => void; onXml: (id: string, language: string) => void;
 }) {
   const source = variantOf(unit, sourceLanguage), target = variantOf(unit, targetLanguage);
   const unmatched = !source.text.trim() || !target.text.trim();
   return <li className={'min-w-0 rounded-lg border bg-white ' + (selected ? 'border-[#1677ff]' : 'border-[#e0e0e0]')}>
     <div className="flex flex-wrap items-center gap-2 border-b border-[#eeeeee] bg-[#fafafa] px-3 py-2 text-[11px] text-[#777777]">
-      <label className="flex min-h-9 items-center gap-2"><input type="checkbox" checked={selected} disabled={busy}
-        onChange={() => useCorpusStore.getState().select(unit.id)} aria-label={'选择第 ' + (index + 1) + ' 行'} />第 {index + 1} 行</label>
+      <span>第 {index + 1} 行</span>
       <span className={unit.review === 'confirmed' ? 'text-[#389e0d]' : 'text-[#ad6800]'}>{REVIEW_LABEL[unit.review]}</span>
       {unmatched && <span className="rounded bg-[#fff7e6] px-2 py-1 text-[#ad6800]">包含空侧</span>}
       {unit.locked && <span className="rounded bg-[#e6f4ff] px-2 py-1 text-[#1677ff]">锚点已锁定</span>}
-      <span className="ml-auto">{unit.provenance === 'automatic' ? '自动对应' : unit.provenance === 'manual' ? '人工调整' : '文件原有对应'}</span>
     </div>
     <div className="grid grid-cols-1 gap-3 p-3 md:grid-cols-2">
       <SideEditor side={source} label={languageLabel(sourceLanguage) + ' · ' + sourceLanguage} disabled={busy}
-        onSave={text => operate(project => editVariant(project, unit.id, sourceLanguage, text))} onXml={() => onXml(unit.id, sourceLanguage)} />
+        onSave={text => operate(project => editVariant(project, unit.id, sourceLanguage, text))} />
       <SideEditor side={target} label={languageLabel(targetLanguage) + ' · ' + targetLanguage} disabled={busy}
-        onSave={text => operate(project => editVariant(project, unit.id, targetLanguage, text))} onXml={() => onXml(unit.id, targetLanguage)} />
+        onSave={text => operate(project => editVariant(project, unit.id, targetLanguage, text))} />
     </div>
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 pb-3 text-[11px] text-[#555555] [&_button]:min-h-9">
+    <div className="px-3 pb-3 text-[11px] text-[#555555] [&_button]:min-h-9">
       <button type="button" disabled={busy} onClick={() => operate(project => setReview(project, [unit.id], unit.review !== 'confirmed'))} className="text-[#1677ff]">{unit.review === 'confirmed' ? '改为待复核' : '确认此行'}</button>
-      {canAnchor && <button type="button" disabled={busy} onClick={() => operate(project => toggleAnchor(project, unit.id))}>{unit.locked ? '解锁锚点' : '锁为锚点'}</button>}
-      <button type="button" disabled={busy} onClick={() => onSplit(unit.id)}>拆分</button>
-      <button type="button" disabled={busy || index === 0} onClick={() => operate(project => moveVariant(project, unit.id, targetLanguage, -1))}>右侧上移</button>
-      <button type="button" disabled={busy} onClick={() => operate(project => moveVariant(project, unit.id, targetLanguage, 1))}>右侧下移</button>
-      <button type="button" disabled={busy} onClick={() => operate(project => detachVariant(project, unit.id, targetLanguage))}>右侧独立成行</button>
-      <button type="button" disabled={busy} onClick={() => operate(project => detachVariant(project, unit.id, sourceLanguage))}>左侧独立成行</button>
-      <details className="min-w-0 w-full"><summary className="cursor-pointer py-1 text-[#888888]">原文位置、其他语言与字段</summary>
+      <details className="mt-1 min-w-0">
+        <summary className="w-fit cursor-pointer py-2 text-[#777777]">更多调整{selected ? ' · 已勾选' : ''}</summary>
+        <div className="mt-1 rounded-lg border border-[#eeeeee] bg-[#fafafa] p-3">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <label className="flex min-h-9 items-center gap-2"><input type="checkbox" checked={selected} disabled={busy}
+              onChange={() => useCorpusStore.getState().select(unit.id)} aria-label={'选择第 ' + (index + 1) + ' 行'} />选择此行，参与批量调整</label>
+            <button type="button" disabled={busy} onClick={() => onSplit(unit.id)}>拆分此行</button>
+            <button type="button" disabled={busy || !nextId} onClick={() => { if (nextId) operate(project => mergeUnits(project, [unit.id, nextId])); }}>与下一行合并</button>
+            {canAnchor && <button type="button" disabled={busy} onClick={() => operate(project => toggleAnchor(project, unit.id))}>{unit.locked ? '解锁锚点' : '锁为锚点'}</button>}
+            <button type="button" disabled={busy} onClick={() => operate(project => excludeUnits(project, [unit.id]))}>排除此行</button>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+            <button type="button" disabled={busy || index === 0} onClick={() => operate(project => moveVariant(project, unit.id, targetLanguage, -1))}>右侧上移</button>
+            <button type="button" disabled={busy || !nextId} onClick={() => operate(project => moveVariant(project, unit.id, targetLanguage, 1))}>右侧下移</button>
+            <button type="button" disabled={busy} onClick={() => operate(project => detachVariant(project, unit.id, targetLanguage))}>右侧独立成行</button>
+            <button type="button" disabled={busy} onClick={() => operate(project => detachVariant(project, unit.id, sourceLanguage))}>左侧独立成行</button>
+          </div>
+          <p className="mt-1 leading-5 text-[#888888]">移动与合并按完整语料的行号顺序操作，可能涉及当前筛选或分页外的行。“独立成行”会保留内容，并形成空侧对应；排除记录可在批量调整中恢复。</p>
+          {(source.markup !== undefined || target.markup !== undefined) && <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[#1677ff]">
+            {source.markup !== undefined && <button type="button" disabled={busy} onClick={() => onXml(unit.id, sourceLanguage)}>编辑标签 XML（左侧 · {languageLabel(sourceLanguage)}）</button>}
+            {target.markup !== undefined && <button type="button" disabled={busy} onClick={() => onXml(unit.id, targetLanguage)}>编辑标签 XML（右侧 · {languageLabel(targetLanguage)}）</button>}
+          </div>}
+          <p className="mt-2 text-[#888888]">对应来源：{unit.provenance === 'automatic' ? '自动对应' : unit.provenance === 'manual' ? '人工调整' : '文件原有对应'}</p>
+          <details className="mt-2 min-w-0"><summary className="cursor-pointer py-1 text-[#888888]">原文位置、其他语言与字段</summary>
         <div className="max-h-52 overflow-auto rounded bg-[#f7f8fa] p-2 text-[11px]">
           {unit.variants.map((side, position) => <p key={side.language + '-' + position} className="mb-2 whitespace-pre-wrap break-words">{side.language}：{side.text}
             {'\n'}{side.refs.map(ref => ref.blockId + ' [' + ref.start + ', ' + ref.end + ')').join('；')}</p>)}
           {unit.score !== undefined && <p>算法原始分数：{unit.score.toFixed(4)}（不是正确概率）</p>}
           <pre className="whitespace-pre-wrap break-all">{JSON.stringify(unit.metadata, null, 2)}</pre>
+        </div>
+          </details>
         </div>
       </details>
     </div>
@@ -106,7 +122,6 @@ export function CorpusEditor({ busy, operate, issue }: { busy: boolean; operate:
       <h2 className="mr-auto text-[17px] font-semibold text-[#222222]">双语对应 · {project.units.length} 行</h2>
       <button type="button" className={BUTTON} disabled={busy || !past.length} onClick={() => useCorpusStore.getState().undo()}>撤销</button>
       <button type="button" className={BUTTON} disabled={busy || !future.length} onClick={() => useCorpusStore.getState().redo()}>重做</button>
-      <button type="button" className={BUTTON} disabled={busy} onClick={() => operate(swapDirection)}>交换中英方向</button>
     </div>
     <div className="mb-3 flex flex-wrap gap-2">
       <label className="min-w-[140px] flex-1 text-[11px] text-[#777777]">显示
@@ -118,7 +133,10 @@ export function CorpusEditor({ busy, operate, issue }: { busy: boolean; operate:
         <input value={query} onChange={event => { setQuery(event.target.value); setPage(0); }} className={FIELD + ' mt-1'} placeholder="搜索中文或英文" />
       </label>
     </div>
-    <div className="mb-4 flex flex-wrap items-center gap-2 text-[11px] text-[#777777]">
+    <details className="mb-3 rounded-lg border border-[#e0e0e0] bg-[#fafafa] px-3 py-2 text-[11px] text-[#777777]">
+      <summary className="cursor-pointer py-1">批量与其他调整{selected.length ? ' · 已选 ' + selected.length + ' 行' : ''}{project.excludedUnits?.length ? ' · ' + project.excludedUnits.length + ' 行已排除' : ''}</summary>
+      <p className="my-2 leading-5">在每行“更多调整”中勾选，或选择本页。跨页所选仍保留；合并需选择完整语料中相邻的行。</p>
+      <div className="flex flex-wrap items-center gap-2">
       <button type="button" className={BUTTON} disabled={busy || !visible.length} onClick={() => useCorpusStore.getState().selectMany(visible.map(({ unit }) => unit.id))}>选择本页</button>
       <button type="button" className={BUTTON} disabled={busy || !selected.length} onClick={() => useCorpusStore.getState().selectMany([])}>清除选择</button>
       <span>已选 {selected.length} 行</span>
@@ -127,10 +145,12 @@ export function CorpusEditor({ busy, operate, issue }: { busy: boolean; operate:
       <button type="button" className={BUTTON} disabled={busy || !selected.length} onClick={() => operate(project => excludeUnits(project, selected))}>排除所选</button>
       <button type="button" className={BUTTON} disabled={busy} onClick={() => operate(addEmptyUnit)}>添加空行</button>
       {!!project.excludedUnits?.length && <button type="button" className={BUTTON} disabled={busy} onClick={() => operate(restoreExcluded)}>恢复 {project.excludedUnits.length} 条排除记录</button>}
-    </div>
-    <p className="mb-3 text-[11px] leading-5 text-[#888888]">左侧 {languageLabel(project.sourceLanguage)} · {project.sourceLanguage}；右侧 {languageLabel(project.targetLanguage)} · {project.targetLanguage}。文字离开输入框后保存修改；“独立成行”会保留原内容并形成空侧对应。</p>
+      <button type="button" className={BUTTON} disabled={busy} onClick={() => operate(swapDirection)}>交换中英方向</button>
+      </div>
+    </details>
+    <p className="mb-3 text-[11px] leading-5 text-[#888888]">左侧 {languageLabel(project.sourceLanguage)} · {project.sourceLanguage}；右侧 {languageLabel(project.targetLanguage)} · {project.targetLanguage}。文字离开输入框后保存修改；核对无误后点击“确认此行”。</p>
     <ol className="space-y-3">
-      {visible.map(({ unit, index }) => <CorpusRow key={unit.id} unit={unit} index={index} selected={selected.includes(unit.id)}
+      {visible.map(({ unit, index }) => <CorpusRow key={unit.id} unit={unit} index={index} nextId={project.units[index + 1]?.id} selected={selected.includes(unit.id)}
         sourceLanguage={project.sourceLanguage} targetLanguage={project.targetLanguage} busy={busy} canAnchor={project.origin === 'alignment'}
         operate={operate} onSplit={setSplitId} onXml={openXml} />)}
     </ol>

@@ -3,6 +3,7 @@ import { useTranslationStore, type TranslationResult } from '../../store/transla
 import { ExportMenu } from '../ExportMenu/ExportMenu';
 import { languageLabel } from '../../services/export/types';
 import { ParagraphComparison } from './ParagraphComparison';
+import { supportsParagraphAlignment } from '../../services/alignment/paragraphs';
 
 export function ResultArea({ onOpenCorpus }: { onOpenCorpus?: () => void } = {}) {
   const { result, isLoading, error, isStreaming, streamingText, streamStatus, progressPercent } = useTranslationStore();
@@ -14,7 +15,7 @@ export function ResultArea({ onOpenCorpus }: { onOpenCorpus?: () => void } = {})
   return (
     <div className="w-full mt-6 md:mt-10">
       {error && <ErrorState message={error} />}
-      {result && !isLoading && <ResultCard result={result} onOpenCorpus={onOpenCorpus} />}
+      {result && !isLoading && <ResultCard key={result.id || 'current-result'} result={result} onOpenCorpus={onOpenCorpus} />}
       {!result && !error && isLoading && (
         isStreaming && (streamingText || streamStatus) ? (
           <StreamingCard text={streamingText} status={streamStatus} progress={progressPercent} />
@@ -219,12 +220,19 @@ const SEGMENT_TYPE_LABELS: Record<string, string> = {
 function ResultCard({ result, onOpenCorpus }: { result: TranslationResult; onOpenCorpus?: () => void }) {
   const { showTranslationNotes, toggleShowTranslationNotes, isDemoMode } = useTranslationStore();
   const [copySuccess, setCopySuccess] = useState(false);
-  const [showAlignment, setShowAlignment] = useState(true);
+  const [showAlignment, setShowAlignment] = useState(false);
   const [openingCorpus, setOpeningCorpus] = useState(false);
   const [corpusError, setCorpusError] = useState<string | null>(null);
   const corpusLive = useRef(true);
   useEffect(() => { corpusLive.current = true; return () => { corpusLive.current = false; }; }, []);
   const isDemo = isDemoMode || result.source === 'demo';
+  const canAlign = !!(result.sourceText || result.detectedText)?.trim()
+    && supportsParagraphAlignment(result.sourceLanguage, result.targetLanguage);
+  const hasImageDetails = !!result.detectedText || result.segments.some(segment => segment.type !== 'text');
+  const showSegmentedView = () => {
+    setShowAlignment(true);
+    if (!result.paragraphAlignment && result.alignmentStatus !== 'pending') void useTranslationStore.getState().regenerateAlignment();
+  };
   
   const handleCopy = async () => {
     try {
@@ -335,18 +343,19 @@ function ResultCard({ result, onOpenCorpus }: { result: TranslationResult; onOpe
       
       {/* Translation result */}
       <div className="p-4 md:p-7">
-        {result.paragraphAlignment && (
+        {canAlign && (
           <div className="flex flex-wrap gap-2 mb-4" aria-label="结果显示方式">
-            <button type="button" aria-pressed={showAlignment} onClick={() => setShowAlignment(true)} className={`btn btn-secondary h-10 ${showAlignment ? 'bg-[#e6f4ff] border-[#1677ff] text-[#1677ff]' : ''}`}>中英段落对照</button>
             <button type="button" aria-pressed={!showAlignment} onClick={() => setShowAlignment(false)} className={`btn btn-secondary h-10 ${!showAlignment ? 'bg-[#e6f4ff] border-[#1677ff] text-[#1677ff]' : ''}`}>完整译文</button>
-            {onOpenCorpus && <button type="button" disabled={openingCorpus} onClick={() => void handleOpenCorpus()} className="btn btn-secondary min-h-10 md:ml-auto">{openingCorpus ? '正在整理…' : '制作 TMX / RTF 语料'}</button>}
+            <button type="button" aria-pressed={showAlignment} onClick={showSegmentedView} className={`btn btn-secondary h-10 ${showAlignment ? 'bg-[#e6f4ff] border-[#1677ff] text-[#1677ff]' : ''}`}>分段中英对照{result.alignmentStatus === 'pending' ? ' · 准备中' : ''}</button>
+            {onOpenCorpus && <button type="button" disabled={openingCorpus || !result.paragraphAlignment || result.alignmentStatus === 'pending'} onClick={() => void handleOpenCorpus()} className="btn btn-secondary min-h-10 md:ml-auto">{openingCorpus ? '正在整理…' : '制作 TMX / RTF 语料'}</button>}
           </div>
         )}
-        {result.alignmentStatus === 'pending' && <p role="status" className="mb-4 text-[12px] text-[#888888]">译文已生成，正在整理中英文段落对照…</p>}
-        {result.alignmentError && <p role="status" className="mb-4 text-[12px] text-[#888888]">{result.alignmentError}</p>}
+        {result.alignmentStatus === 'pending' && <p role="status" className="mb-4 text-[12px] text-[#888888]">译文已完成，分段中英对照正在后台生成，不影响查看和导出译文。</p>}
+        {showAlignment && result.alignmentError && <p role="status" className="mb-4 text-[12px] text-[#888888]">{result.alignmentError}{result.alignmentStatus !== 'pending' && <button type="button" onClick={() => void useTranslationStore.getState().regenerateAlignment()} className="ml-2 min-h-9 text-[#1677ff]">重试分段</button>}</p>}
         {corpusError && <p role="alert" className="mb-4 text-[12px] text-[#b42318]">{corpusError}</p>}
-        {result.paragraphAlignment && showAlignment ? (
-          <ParagraphComparison alignment={result.paragraphAlignment} />
+        {showAlignment && canAlign ? (
+          result.paragraphAlignment ? <ParagraphComparison key={(result.paragraphAlignment.method || 'script') + '-' + result.paragraphAlignment.rows.length} alignment={result.paragraphAlignment} />
+            : <p role="status" className="py-4 text-[14px] text-[#888888]">{result.alignmentStatus === 'pending' ? '正在自动拆分和匹配中英文本，完整译文已可查看。' : '暂未生成可用的分段对照，请重试分段或继续查看完整译文。'}</p>
         ) : (
           <p className="text-[17px] leading-[1.8] text-[#1a1a1a] whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
             {result.translation}
@@ -354,6 +363,7 @@ function ResultCard({ result, onOpenCorpus }: { result: TranslationResult; onOpe
         )}
       </div>
       
+      {hasImageDetails && <details className="mx-4 mb-6 md:mx-7 text-[13px] text-[#777777]"><summary className="mb-4 cursor-pointer min-h-9">查看图片识别与画格信息</summary>
       {/* Detected text (for image mode) */}
       {result.detectedText && (
         <div className="mx-4 mb-6 md:mx-7 md:mb-7 p-4 md:p-6 bg-[#f7f8fa] rounded-xl">
@@ -397,6 +407,7 @@ function ResultCard({ result, onOpenCorpus }: { result: TranslationResult; onOpe
           </div>
         </div>
       )}
+      </details>}
       
       {/* Notes - display controlled by the toggle; data always kept in state */}
       {showTranslationNotes && (

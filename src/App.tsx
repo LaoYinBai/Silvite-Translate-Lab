@@ -5,8 +5,12 @@ import { ResultArea } from './components/ResultArea/ResultArea';
 import { Lightbox } from './components/Lightbox/Lightbox';
 import { RealtimeTranslation } from './components/RealtimeTranslation/RealtimeTranslation';
 import { useTranslationStore } from './store/translationStore';
+import { HistoryStatus } from './components/History/HistoryStatus';
+import { restoreHistoryRecord, startHistoryTracking } from './services/history/tracking';
+import type { HistoryRecord } from './services/history/types';
 
 const CorpusTools = lazy(() => import('./components/CorpusTools/CorpusTools'));
+const History = lazy(() => import('./components/History/History'));
 
 function App() {
   const { 
@@ -16,10 +20,14 @@ function App() {
   } = useTranslationStore();
   
   const [mobileSamplesOpen, setMobileSamplesOpen] = useState(false);
-  const [activeView, setActiveView] = useState<'translate' | 'realtime' | 'corpus'>('translate');
+  const [activeView, setActiveView] = useState<'translate' | 'realtime' | 'corpus' | 'history'>('translate');
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (
     localStorage.getItem('silvite-theme') === 'dark' ? 'dark' : 'light'
   ));
+
+  useEffect(() => {
+    startHistoryTracking();
+  }, []);
 
   useEffect(() => {
     checkService();
@@ -43,6 +51,15 @@ function App() {
     setMobileSamplesOpen(false);
     setActiveView('corpus');
   };
+  const openHistory = () => {
+    setMobileSamplesOpen(false);
+    setActiveView('history');
+  };
+  const restoreHistory = (record: HistoryRecord) => {
+    restoreHistoryRecord(record);
+    setMobileSamplesOpen(false);
+    setActiveView('translate');
+  };
 
   const hasResult = result || isLoading;
 
@@ -53,7 +70,7 @@ function App() {
       {/* Sidebar - hidden on small screens; samples open in a drawer.
           Desktop: fixed-width floating panel, rounded, clipped by itself. */}
       <div className="hidden md:block w-[280px] flex-shrink-0 rounded-[10px] overflow-hidden">
-        <Sidebar onNewChat={handleNewChat} onRealtime={openRealtime} onCorpus={openCorpus} onSamplePicked={() => setActiveView('translate')} />
+        <Sidebar onNewChat={handleNewChat} onRealtime={openRealtime} onCorpus={openCorpus} onHistory={openHistory} onSamplePicked={() => setActiveView('translate')} />
       </div>
       
       {/* Mobile samples drawer */}
@@ -72,6 +89,7 @@ function App() {
               }}
               onRealtime={openRealtime}
               onCorpus={openCorpus}
+              onHistory={openHistory}
               onSamplePicked={() => { setMobileSamplesOpen(false); setActiveView('translate'); }}
             />
           </div>
@@ -95,16 +113,23 @@ function App() {
               </svg>
               菜单
             </button>
-            <h2 className="text-[16px] sm:text-[19px] font-semibold text-[#1a1a1a] truncate">{activeView === 'realtime' ? '实时翻译' : activeView === 'corpus' ? '中英语料工具' : 'Translate Lab'}</h2>
+            <h2 className="text-[16px] sm:text-[19px] font-semibold text-[#1a1a1a] truncate">{activeView === 'realtime' ? '实时翻译' : activeView === 'corpus' ? '中英语料工具' : activeView === 'history' ? '翻译历史' : 'Translate Lab'}</h2>
             <span className="text-[11px] sm:text-[13px] text-[#888888] bg-[#f5f5f5] px-2 py-0.5 sm:px-3 sm:py-1 rounded-full flex-shrink-0">
               实验版
             </span>
           </div>
         </header>
+        <div className="flex-shrink-0 border-b border-[#f0f0f0] bg-white px-4 sm:px-10">
+          <HistoryStatus onOpen={openHistory} />
+        </div>
         
         {/* Content area - scrollable */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden min-w-0">
-          {activeView === 'corpus' ? (
+          {activeView === 'history' ? (
+            <Suspense fallback={<p role="status" className="p-7 text-[14px] text-[#777777]">正在打开翻译历史…</p>}>
+              <History onBack={() => setActiveView('translate')} onRestore={restoreHistory} />
+            </Suspense>
+          ) : activeView === 'corpus' ? (
             <Suspense fallback={<p role="status" className="p-7 text-[14px] text-[#777777]">正在打开语料工具…</p>}>
               <CorpusTools onBack={() => setActiveView('translate')} />
             </Suspense>

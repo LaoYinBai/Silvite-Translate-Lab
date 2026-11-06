@@ -22,7 +22,7 @@ export function corpusFromTranslation(alignment: ParagraphAlignment) {
         refs: row.target ? [{ documentId: target.id, blockId: targetBlock.id, start: row.target.start, end: row.target.end }] : [] },
     ],
   }));
-  project.warnings.push({ message: '来自翻译结果的段落预对齐，尚未进行语义复核。可以人工校正，也可锁定已确认的行后重新语义对齐。' });
+  project.warnings.push({ message: '沿用翻译结果的自动分段中英对照（' + (alignment.method === 'ai' ? 'AI 辅助' : '本地规则') + '），尚未人工复核。可以继续校正，也可锁定已确认的行后重新语义对齐。' });
   assertCorpusCoverage(project);
   return project;
 }

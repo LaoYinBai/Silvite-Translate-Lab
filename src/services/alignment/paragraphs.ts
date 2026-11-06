@@ -1,3 +1,5 @@
+import { hasLongReadableSentence, readableLengthLimit, readableRanges } from './readable';
+
 export interface TranslatedRange {
   sourceStart: number;
   sourceEnd: number;
@@ -33,6 +35,8 @@ export interface ParagraphAlignment {
   sourceLanguage: 'zh' | 'en';
   targetLanguage: 'zh' | 'en';
   rows: ParagraphPair[];
+  method?: 'script' | 'ai';
+  granularity?: 'segment' | 'paragraph';
 }
 
 interface Paragraph extends ParagraphRange {
@@ -55,7 +59,7 @@ export function supportsParagraphAlignment(sourceLanguage: string, targetLanguag
 
 // The ranges partition the original string, including separators. Normalized
 // features are used only for matching; neither source nor translation changes.
-function splitParagraphs(text: string, extraBoundaries: Set<number> = new Set()): Paragraph[] {
+function splitParagraphs(text: string, language: string, extraBoundaries: Set<number> = new Set()): Paragraph[] {
   const lines = [...text.matchAll(/[^\r\n]*(?:\r\n|\r|\n|$)/g)]
     .filter(match => match[0].length > 0)
     .map(match => ({ start: match.index, end: match.index + match[0].length, body: match[0].trim() }));
@@ -102,7 +106,14 @@ function splitParagraphs(text: string, extraBoundaries: Set<number> = new Set())
     last.end = text.length;
     last.text = text.slice(last.start);
   }
-  return paragraphs;
+  const readable = paragraphs.flatMap(paragraph => readableRanges(paragraph.text, language).map(range => {
+    const start = paragraph.start + range.start, end = paragraph.start + range.end;
+    const raw = text.slice(start, end);
+    return { start, end, firstParagraph: 0, lastParagraph: 0, text: raw,
+      length: Math.max(1, raw.replace(/\s/g, '').length), numbers: new Set(raw.match(/\d+(?:[.,]\d+)*/g) || []) };
+  }));
+  readable.forEach((part, index) => { part.firstParagraph = index + 1; part.lastParagraph = index + 1; });
+  return readable;
 }
 
 function group(paragraphs: Paragraph[], start: number, count: number): ParagraphRange | null {
@@ -139,7 +150,7 @@ const TRANSITIONS = [[1, 1], [1, 2], [2, 1], [2, 2], [1, 3], [3, 1], [2, 3], [3,
 
 // A bounded monotone path with length/number cues. This is a structural
 // suggestion, never a semantic guarantee or a calibrated confidence score.
-function alignRegion(source: Paragraph[], target: Paragraph[]): ParagraphPair[] {
+function alignRegion(source: Paragraph[], target: Paragraph[], sourceLanguage: string, targetLanguage: string): ParagraphPair[] {
   const n = source.length;
   const m = target.length;
   const rows: ParagraphPair[] = [];
@@ -155,6 +166,7 @@ function alignRegion(source: Paragraph[], target: Paragraph[]): ParagraphPair[] 
   }
   const ratio = target.reduce((sum, paragraph) => sum + paragraph.length, 0)
     / source.reduce((sum, paragraph) => sum + paragraph.length, 0);
+  const sourceLimit = readableLengthLimit(sourceLanguage), targetLimit = readableLengthLimit(targetLanguage);
   const sourceGroups = source.map((_paragraph, start) => [1, 2, 3].map(count => start + count <= n ? combined(source, start, count) : null));
   const targetGroups = target.map((_paragraph, start) => [1, 2, 3].map(count => start + count <= m ? combined(target, start, count) : null));
   const width = m + 1;
@@ -169,6 +181,10 @@ function alignRegion(source: Paragraph[], target: Paragraph[]): ParagraphPair[] 
       if (!state) continue;
       for (const [a, b] of TRANSITIONS) {
         if (s + a > n || t + b > m) continue;
+        // Do not undo readable splitting merely to make fragment counts equal.
+        // An uncertain leftover remains visible for AI/manual correspondence.
+        if (a > 1 && sourceGroups[s][a - 1]!.length > sourceLimit) continue;
+        if (b > 1 && targetGroups[t][b - 1]!.length > targetLimit) continue;
         if (Math.abs(t + b - (s + a) * m / n) > band) continue;
         const matchCost = a && b ? correspondenceCost(sourceGroups[s][a - 1]!, targetGroups[t][b - 1]!, ratio) : 3;
         const cost = state.cost + matchCost + (a && b ? (a + b - 2) * 0.75 : 0);
@@ -213,12 +229,12 @@ function validTranslatedRanges(input: ParagraphAlignmentInput): TranslatedRange[
 export function alignParagraphs(input: ParagraphAlignmentInput): ParagraphAlignment | null {
   if (!supportsParagraphAlignment(input.sourceLanguage, input.targetLanguage)
     || !input.sourceText.trim() || !input.targetText.trim()) return null;
-  const source = splitParagraphs(input.sourceText);
+  const source = splitParagraphs(input.sourceText, input.sourceLanguage);
   const sourceEnds = new Set(source.map(paragraph => paragraph.end));
   const anchors = validTranslatedRanges(input).filter(range => sourceEnds.has(range.sourceEnd));
   // Confirmed request boundaries can separate paragraphs even if a model
   // trimmed their trailing blank lines during document assembly.
-  const target = splitParagraphs(input.targetText, new Set(anchors.map(range => range.targetEnd)));
+  const target = splitParagraphs(input.targetText, input.targetLanguage, new Set(anchors.map(range => range.targetEnd)));
   const rows: ParagraphPair[] = [];
   let s = 0;
   let t = 0;
@@ -227,7 +243,7 @@ export function alignParagraphs(input: ParagraphAlignmentInput): ParagraphAlignm
     const targetStart = t;
     while (s < source.length && source[s].end <= anchor.sourceEnd) s++;
     while (t < target.length && target[t].end <= anchor.targetEnd) t++;
-    if (s > sourceStart || t > targetStart) rows.push(...alignRegion(source.slice(sourceStart, s), target.slice(targetStart, t)));
+    if (s > sourceStart || t > targetStart) rows.push(...alignRegion(source.slice(sourceStart, s), target.slice(targetStart, t), input.sourceLanguage, input.targetLanguage));
   }
   for (const side of ['source', 'target'] as const) {
     let cursor = 0;
@@ -246,5 +262,13 @@ export function alignParagraphs(input: ParagraphAlignmentInput): ParagraphAlignm
     sourceLanguage: bilingualLanguage(input.sourceLanguage)!,
     targetLanguage: bilingualLanguage(input.targetLanguage)!,
     rows: rows.map((row, index) => ({ ...row, id: 'paragraph-' + (index + 1) })),
+    method: 'script', granularity: 'segment',
   };
+}
+
+export function needsAiSegmentation(input: ParagraphAlignmentInput, alignment: ParagraphAlignment): boolean {
+  if (input.sourceText.length + input.targetText.length > 12_000 || alignment.rows.length > 160) return false;
+  return alignment.rows.some(row => row.needsCheck)
+    || hasLongReadableSentence(input.sourceText, input.sourceLanguage)
+    || hasLongReadableSentence(input.targetText, input.targetLanguage);
 }
