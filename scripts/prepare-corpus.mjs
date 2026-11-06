@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gunzipSync } from 'node:zlib';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const cache = path.join(root, '.cache', 'corpus');
@@ -25,18 +26,11 @@ await mkdir(out, { recursive: true });
 async function download(urls, file, sha256) {
   try { const bytes = await readFile(file); if (!sha256 || hash(bytes) === sha256) return bytes; } catch { /* prepare below */ }
   await mkdir(path.dirname(file), { recursive: true });
-  urls = urls.flatMap(url => {
-    const raw = url.match(/^https:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/);
-    return raw ? [url, 'https://api.github.com/repos/' + raw[1] + '/' + raw[2] + '/contents/' + raw[4] + '?ref=' + raw[3]] : [url];
-  });
   let last;
   for (let attempt = 0; attempt < 3; attempt++) {
     for (const url of urls) {
       try {
-        const headers = url.includes('/releases/assets/') ? { Accept: 'application/octet-stream' }
-          : url.includes('/contents/') || url.includes('/git/blobs/') ? { Accept: 'application/vnd.github.raw+json' } : {};
-        if (url.startsWith('https://api.github.com/') && process.env.GH_TOKEN) headers.Authorization = 'Bearer ' + process.env.GH_TOKEN;
-        const response = await fetch(url, { headers, signal: AbortSignal.timeout(240_000) });
+        const response = await fetch(url, { signal: AbortSignal.timeout(240_000) });
         if (!response.ok) throw new Error('HTTP ' + response.status);
         const bytes = Buffer.from(await response.arrayBuffer());
         if (sha256 && hash(bytes) !== sha256) throw new Error('Asset hash mismatch');
@@ -49,10 +43,9 @@ async function download(urls, file, sha256) {
   throw new Error('Cannot prepare ' + path.basename(file) + ': ' + last?.message);
 }
 const zip = path.join(cache, 'pandoc-3.13-wasm.zip.local');
-await download([
-  'https://github.com/jgm/pandoc/releases/download/3.13/pandoc-3.13-wasm.zip',
-  'https://api.github.com/repos/jgm/pandoc/releases/assets/679544583',
-], zip, '234d2020a7f3a9aab387bd35df3c17ca2ba0078a82490e2b3ede890d648d64fe');
+const vendoredArchive = await readFile(path.join(root, 'scripts', 'assets', 'pandoc-3.13-wasm.zip'));
+if (hash(vendoredArchive) !== '234d2020a7f3a9aab387bd35df3c17ca2ba0078a82490e2b3ede890d648d64fe') throw new Error('Vendored Pandoc archive hash mismatch');
+await writeFile(zip, vendoredArchive);
 let pandoc;
 try {
   pandoc = await readFile(path.join(cache, 'pandoc-3.13-wasm', 'pandoc.wasm'));
@@ -83,9 +76,9 @@ const sqliteRoot = path.join(root, 'node_modules', '@sqlite.org', 'sqlite-wasm',
 const sqliteWasm = await readFile(path.join(sqliteRoot, 'sqlite3.wasm'));
 if (hash(sqliteWasm) !== 'b8a92a19f441a90ff2339fe988fbe317c4adf3ed844096f12aee04aa72d58257') throw new Error('SQLite WASM version/hash mismatch');
 await publish('sqlite/sqlite3.wasm', sqliteWasm);
-const sdltmTemplate = await download([
-  'https://api.github.com/repos/RWS/trados-studio-api-samples/git/blobs/6b429dd22e611042f5cf232f3ec3877c7b088d80',
-], path.join(cache, 'official-empty.sdltm'), 'd0e367a1de5d1ed9f65d9cd031e8d9c551cb5fe4ecb1a5ec948f5a5e2db70eaf');
+const templateSource = await readFile(path.join(root, 'scripts', 'assets', 'rws-empty.sdltm.gz.base64'), 'utf8');
+const sdltmTemplate = gunzipSync(Buffer.from(templateSource.replace(/\s/g, ''), 'base64'));
+if (hash(sdltmTemplate) !== 'd0e367a1de5d1ed9f65d9cd031e8d9c551cb5fe4ecb1a5ec948f5a5e2db70eaf') throw new Error('Vendored SDLTM template hash mismatch');
 await publish('sqlite/empty.sdltm', sdltmTemplate);
 for (const [file, digest] of Object.entries(modelFiles)) {
   const suffix = 'Xenova/paraphrase-multilingual-MiniLM-L12-v2/resolve/' + modelRevision + '/' + file;
@@ -121,7 +114,7 @@ await writeFile(path.join(out, 'SOURCES'), [
   'ONNX conversion: https://huggingface.co/Xenova/paraphrase-multilingual-MiniLM-L12-v2/tree/' + modelRevision,
   'The ONNX conversion repository does not separately declare a license; retain the Apache-2.0 base-model license and both provenance links.',
 ].join('\n') + '\n');
-const baseLicense = await download(['https://www.apache.org/licenses/LICENSE-2.0.txt', 'https://raw.githubusercontent.com/UKPLab/sentence-transformers/master/LICENSE'], path.join(cache, 'MINILM-LICENSE'));
+const baseLicense = await readFile(path.join(root, 'scripts', 'assets', 'RWS-TEMPLATE-LICENSE'));
 await writeFile(path.join(out, 'MINILM-LICENSE'), baseLicense);
 await writeFile(path.join(out, 'SQLITE-PACKAGE-LICENSE'), baseLicense);
 await writeFile(path.join(out, 'RWS-TEMPLATE-LICENSE'), baseLicense);
@@ -129,8 +122,9 @@ const sqliteJs = await readFile(path.join(sqliteRoot, 'index.mjs'), 'utf8');
 await writeFile(path.join(out, 'SQLITE-WASM-NOTICE'), sqliteJs.slice(0, sqliteJs.indexOf('async function sqlite3InitModule')));
 await copyFile(path.join(path.dirname(transformersEntry), '..', 'LICENSE'), path.join(out, 'TRANSFORMERS-LICENSE'));
 const ortCommit = (await readFile(path.join(ortDist, '..', '__commit.txt'), 'utf8')).trim();
+if (ortCommit !== '89f8206ba4f1c22c39e0297fb55272e8ce8cd7d0') throw new Error('Update the bundled ONNX license notices for this runtime revision');
 for (const name of ['LICENSE', 'ThirdPartyNotices.txt']) {
-  const bytes = await download(['https://raw.githubusercontent.com/microsoft/onnxruntime/' + ortCommit + '/' + name], path.join(cache, 'ORT-' + name));
+  const bytes = await readFile(path.join(root, 'scripts', 'assets', 'ORT-' + name));
   await writeFile(path.join(out, 'ORT-' + name), bytes);
 }
 await writeFile(path.join(out, 'manifest.json'), JSON.stringify({ revision, modelRevision, files }, null, 2));
