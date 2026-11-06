@@ -5,10 +5,10 @@ import { languageLabel } from '../../services/export/types';
 const PAGE_SIZE = 40;
 
 function rangeLabel(range: ParagraphRange | null): string {
-  if (!range) return '暂无对应段落';
+  if (!range) return '暂无对应片段';
   return range.firstParagraph === range.lastParagraph
-    ? `第 ${range.firstParagraph} 段`
-    : `第 ${range.firstParagraph}–${range.lastParagraph} 段`;
+    ? `片段 ${range.firstParagraph}`
+    : `片段 ${range.firstParagraph}–${range.lastParagraph}`;
 }
 
 export function ParagraphComparison({ alignment }: { alignment: ParagraphAlignment }) {
@@ -21,9 +21,9 @@ export function ParagraphComparison({ alignment }: { alignment: ParagraphAlignme
   const targetLabel = `译文 · ${languageLabel(alignment.targetLanguage)}`;
 
   return (
-    <section aria-label="中英文段落对照" className="min-w-0">
+    <section aria-label="分段中英文对照" className="min-w-0">
       <p className="mb-4 text-[12px] leading-relaxed text-[#888888]">
-        已自动整理为 {alignment.rows.length} 组对应，请核对段落含义。
+        已自动分为 {alignment.rows.length} 组中英对照（{alignment.method === 'ai' ? 'AI 辅助分段' : '本地规则分段'}），请核对含义。
         {unmatched > 0 && ` 其中 ${unmatched} 组暂未找到对应，内容已保留。`}
       </p>
       <div className="hidden md:grid md:grid-cols-2 border border-b-0 border-[#e0e0e0] rounded-t-lg bg-[#fafafa] text-[13px] font-medium text-[#555555]">

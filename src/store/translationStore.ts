@@ -4,7 +4,7 @@ import { DEMO_SAMPLES } from '../demo/samples';
 import { translateDocument, type DocumentProgressStatus } from '../services/document/translateDocument';
 import { translatePdfAsImages, type PdfVisionStatus } from '../services/document/pdfVision';
 import type { DocumentFileErrorCode, ParsedDocumentFile } from '../services/document/fileParser';
-import { supportsParagraphAlignment, type ParagraphAlignment } from '../services/alignment/paragraphs';
+import { needsAiSegmentation, supportsParagraphAlignment, type ParagraphAlignment, type ParagraphAlignmentInput } from '../services/alignment/paragraphs';
 import { alignParagraphsInBrowser } from '../services/alignment/browser';
 
 export type TranslationMode = 
@@ -60,6 +60,8 @@ export interface TranslationNote {
 }
 
 export interface TranslationResult {
+  id?: string;
+  completedAt?: string;
   sourceLanguage: string;
   targetLanguage: string;
   translation: string;
@@ -147,6 +149,7 @@ interface TranslationState {
   loadDemoSample: (index: number) => Promise<void>;
   translate: () => Promise<void>;
   translateScannedPdf: () => Promise<void>;
+  regenerateAlignment: () => Promise<void>;
   reset: () => void;
 }
 
@@ -178,6 +181,7 @@ export function effectiveInputMode(input: Pick<TranslationState, 'documentFile' 
 // text/document/vision paths so their result shape cannot drift apart.
 function toTranslationResult(response: TranslationResponse, sourceText: string): TranslationResult {
   return {
+    id: crypto.randomUUID(), completedAt: new Date().toISOString(),
     source: 'real',
     sourceLanguage: response.source_language,
     targetLanguage: response.target_language,
@@ -197,22 +201,47 @@ async function publishTranslationResult(
   sourceText: string,
   signal: AbortSignal,
   publish: (result: TranslationResult) => void,
+  model: TranslationModelId,
 ): Promise<void> {
   const result = toTranslationResult(response, sourceText);
+  await prepareResultAlignment(result, signal, publish, model, response.translatedRanges);
+}
+
+async function prepareResultAlignment(
+  result: TranslationResult, signal: AbortSignal, publish: (result: TranslationResult) => void,
+  model: TranslationModelId, translatedRanges?: ParagraphAlignmentInput['translatedRanges'],
+): Promise<void> {
+  const sourceText = result.sourceText || result.detectedText || '';
   if (!sourceText.trim() || !supportsParagraphAlignment(result.sourceLanguage, result.targetLanguage)) {
     publish(result);
     return;
   }
-  publish({ ...result, alignmentStatus: 'pending' });
+  const base = { ...result, alignmentError: undefined };
+  const input: ParagraphAlignmentInput = {
+    sourceText, targetText: result.translation, sourceLanguage: result.sourceLanguage,
+    targetLanguage: result.targetLanguage, translatedRanges,
+  };
+  // The completed translation is published before either worker or AI work.
+  // Callers clear isLoading here, so copy/export/new translation stay usable.
+  publish({ ...base, alignmentStatus: 'pending' });
   try {
-    const alignment = await alignParagraphsInBrowser({
-      sourceText, targetText: result.translation,
-      sourceLanguage: result.sourceLanguage, targetLanguage: result.targetLanguage,
-      translatedRanges: response.translatedRanges,
-    }, signal);
-    if (!signal.aborted) publish({ ...result, paragraphAlignment: alignment || undefined, alignmentStatus: alignment ? 'ready' : 'unavailable' });
+    const alignment = await alignParagraphsInBrowser(input, signal);
+    if (signal.aborted) return;
+    if (!alignment) { publish({ ...base, paragraphAlignment: undefined, alignmentStatus: 'unavailable' }); return; }
+    if (result.source === 'real' && needsAiSegmentation(input, alignment)) {
+      publish({ ...base, paragraphAlignment: alignment, alignmentStatus: 'pending' });
+      try {
+        const { requestAiAlignment } = await import('../api/alignment');
+        if (signal.aborted) return;
+        const refined = await requestAiAlignment(input, model, signal);
+        if (!signal.aborted) publish({ ...base, paragraphAlignment: refined, alignmentStatus: 'ready' });
+      } catch {
+        if (!signal.aborted) publish({ ...base, paragraphAlignment: alignment, alignmentStatus: 'ready',
+          alignmentError: 'AI 辅助分段暂未完成，已保留本地分段结果；可以核对后使用，或重试分段。' });
+      }
+    } else publish({ ...base, paragraphAlignment: alignment, alignmentStatus: 'ready' });
   } catch (error) {
-    if (!signal.aborted) publish({ ...result, alignmentStatus: 'unavailable', alignmentError: error instanceof Error ? error.message : '段落对照暂时不可用，可以继续查看完整译文。' });
+    if (!signal.aborted) publish({ ...base, alignmentStatus: 'unavailable', alignmentError: error instanceof Error ? error.message : '分段对照暂时不可用，可以继续查看完整译文。' });
   }
 }
 
@@ -462,7 +491,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
           streamStatus: null,
           progressPercent: 100,
         });
-      });
+      }, state.model);
     } catch (err) {
       if (!isCurrent()) return;
       set({
@@ -539,7 +568,7 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
           progressPercent: 100,
           fileStatus: 'ready',
         });
-      });
+      }, state.model);
     } catch (err) {
       if (!isCurrent()) return;
       set({
@@ -555,6 +584,21 @@ export const useTranslationStore = create<TranslationState>((set, get) => ({
     }
   },
   
+  regenerateAlignment: async () => {
+    const state = get(), result = state.result;
+    if (!result || state.isLoading || result.alignmentStatus === 'pending') return;
+    invalidateActiveStream();
+    const generation = requestGeneration, controller = new AbortController();
+    activeAbort = controller;
+    let lastPublished = result;
+    try {
+      await prepareResultAlignment(result, controller.signal, next => {
+        if (controller.signal.aborted || generation !== requestGeneration || get().result !== lastPublished) return;
+        lastPublished = next; set({ result: next });
+      }, state.model);
+    } finally { if (activeAbort === controller) activeAbort = null; }
+  },
+
   // Full new-session reset (single implementation behind every "新建翻译"
   // entry). Clears the whole translation session: input, image, settings
   // (incl. anything a demo sample filled in), result/notes and demo state.
