@@ -2609,7 +2609,7 @@ PDF 进入图片校验并被拒（「不支持的文件格式，请使用 JPG、
   不会发起上游请求，也不会静默改用其他 provider。
 - 两家翻译都发送 `thinking:{type:"disabled"}`，保持 SSE 输出。DeepSeek 参数已核对
   官方 Chat Completions 文档，使用“不思考”；普通翻译也拒绝把 `aborted` 等非正常结束
-  的内容作为完整结果。在线 MiMo ASR 和浏览器 Whisper 的识别流程继续使用各自引擎。
+  的内容作为完整结果。在线 MiMo ASR 和浏览器本机识别继续使用各自引擎；当前本机引擎见 [流式 Zipformer](docs/realtime-zipformer.md)。
 - 已通过云端服务端环境变量实际请求网关 `/models`，确认 `deepseek-flash` 和
   `glm-5.3-flash` 均存在；`GET /api/models` 仅返回这两个已配置模型 ID，不返回 Key。
 - 完整配置、官方接口依据和兼容边界见 [模型供应商配置](docs/model-providers.md)。
@@ -2629,6 +2629,8 @@ PDF 进入图片校验并被拒（「不支持的文件格式，请使用 JPG、
 用户五组真实样本有 183 个 RTF/TMX 行、180 条 SDLTM TU；三条差异包含空侧数据，必须保留并明确提示。五份 SDLTM 均为 20 表、25 个显式索引，超过旧空模板的结构；int64 必须精确读写。模板可以指导 schema，但不能生成新文本对应的 Trados 哈希、分词或模糊索引。SDLTM 写出须以原生打开、导出、精确/模糊检索、编辑和重新打开为完成标准，不能仅凭 SQLite 可读或第三方导出成功宣称完全兼容。
 
 ## 二十四、本机 Whisper STT 与移动端支持（2026-11-06）
+
+历史记录：2026-11-07 默认本机方案已替换为中英流式 Zipformer，见 [当前实现与证据范围](docs/realtime-zipformer.md)。以下保留旧 Whisper 方案当时的记录，不能当作当前默认行为。
 
 当前工作区接入多语 Whisper Tiny：在浏览器 Worker 内使用本机 GPU / CPU 推理，默认“仅转文字”；
 桌面 GPU 优先，触控设备默认 CPU 兼容模式。WASM、模型和配置由构建脚本准备并随静态站点发布，

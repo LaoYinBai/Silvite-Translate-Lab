@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { XiaomiRealtimeASRProvider, ServerRealtimeTranslationProvider } from '../../services/realtime/providers';
 import { BrowserMicrophoneCapture } from '../../services/realtime/audio';
-import { WhisperASRProvider } from '../../services/realtime/whisper';
+import { SherpaStreamingASRProvider } from '../../services/realtime/sherpa/provider';
 import { RealtimeSessionEngine, type RealtimeSessionState, type RealtimeSubtitleSegment } from '../../services/realtime/session';
 import type { RealtimeSourceLanguage, RealtimeTargetLanguage } from '../../services/realtime/config';
 import { useTranslationStore } from '../../store/translationStore';
@@ -34,30 +34,31 @@ export function RealtimeTranslation({ onBack }: { onBack: () => void }) {
   const setModel = useTranslationStore((state) => state.setModel);
   const [sourceLanguage, setSourceLanguage] = useState<RealtimeSourceLanguage>('auto');
   const [targetLanguage, setTargetLanguage] = useState<RealtimeTargetLanguage>('auto');
-  const [asrEngine, setAsrEngine] = useState<'whisper' | 'mimo'>('whisper');
+  const [asrEngine, setAsrEngine] = useState<'sherpa' | 'mimo'>('sherpa');
   const [transcriptionOnly, setTranscriptionOnly] = useState(true);
-  const [computeDevice, setComputeDevice] = useState<'auto' | 'wasm'>(() => (
-    window.matchMedia('(pointer: coarse)').matches ? 'wasm' : 'auto'
-  ));
-  const [whisperGPU] = useState(() => new WhisperASRProvider());
-  const [whisperCPU] = useState(() => new WhisperASRProvider(undefined, 'wasm'));
-  const whisper = computeDevice === 'wasm' ? whisperCPU : whisperGPU;
+  const [localASR] = useState(() => new SherpaStreamingASRProvider());
   const [onlineASR] = useState(() => new XiaomiRealtimeASRProvider());
   const [session, setSession] = useState(INITIAL_STATE);
   const [engine] = useState(() => new RealtimeSessionEngine({
     capture: new BrowserMicrophoneCapture(),
-    asr: whisper,
+    asr: localASR,
     translation: new ServerRealtimeTranslationProvider(),
     model,
     sourceLanguage, targetLanguage, context, terminology, preserveNames, transcriptionOnly,
     onChange: setSession,
   }));
   const lifecycle = useRef(0);
+  const historyRef = useRef<HTMLOListElement>(null);
+  const followHistory = useRef(true);
+
+  useEffect(() => {
+    if (followHistory.current && historyRef.current) historyRef.current.scrollTop = historyRef.current.scrollHeight;
+  }, [session.segments]);
 
   useEffect(() => {
     engine.updateSettings({ model, sourceLanguage, targetLanguage, context, terminology, preserveNames, transcriptionOnly,
-      asr: asrEngine === 'whisper' ? whisper : onlineASR });
-  }, [engine, model, sourceLanguage, targetLanguage, context, terminology, preserveNames, transcriptionOnly, asrEngine, whisper, onlineASR]);
+      asr: asrEngine === 'sherpa' ? localASR : onlineASR });
+  }, [engine, model, sourceLanguage, targetLanguage, context, terminology, preserveNames, transcriptionOnly, asrEngine, localASR, onlineASR]);
 
   useEffect(() => {
     lifecycle.current += 1;
@@ -71,12 +72,12 @@ export function RealtimeTranslation({ onBack }: { onBack: () => void }) {
 
   const active = session.isListening || session.isStarting || session.translationPending > 0 || session.recognitionPending > 0
     || ['preparing-model', 'requesting-microphone', 'stopping'].includes(session.status);
-  const canRetry = ['network-disconnected', 'rate-limited', 'recognition-failed'].includes(session.status);
+  const canRetry = asrEngine === 'mimo' && ['network-disconnected', 'rate-limited', 'recognition-failed'].includes(session.status);
   const failedTranslations = session.segments.filter((segment) => segment.translationStatus === 'error').length;
   const beginSession = () => {
     // Read the current controls at the start action as well as in the settings effect.
     engine.updateSettings({ model, sourceLanguage, targetLanguage, context, terminology, preserveNames, transcriptionOnly,
-      asr: asrEngine === 'whisper' ? whisper : onlineASR });
+      asr: asrEngine === 'sherpa' ? localASR : onlineASR });
     void engine.start();
   };
 
@@ -98,8 +99,8 @@ export function RealtimeTranslation({ onBack }: { onBack: () => void }) {
         <div className="flex flex-wrap items-end gap-4 mb-4">
           <label className="text-[12px] font-medium text-[#666666] flex-1 min-w-[200px]">
             语音识别引擎
-            <select value={asrEngine} onChange={(event) => setAsrEngine(event.target.value as 'whisper' | 'mimo')} disabled={active} className="block mt-1.5 w-full h-10 border border-[#e0e0e0] rounded-md bg-white px-3 text-[14px] text-[#222222]">
-              <option value="whisper">本机 Whisper · 音频不上传</option>
+            <select value={asrEngine} onChange={(event) => setAsrEngine(event.target.value as 'sherpa' | 'mimo')} disabled={active} className="block mt-1.5 w-full h-10 border border-[#e0e0e0] rounded-md bg-white px-3 text-[14px] text-[#222222]">
+              <option value="sherpa">本机中英流式识别 · 音频不上传</option>
               <option value="mimo">在线 MiMo</option>
             </select>
           </label>
@@ -108,13 +109,6 @@ export function RealtimeTranslation({ onBack }: { onBack: () => void }) {
             仅转文字
           </label>
         </div>
-        {asrEngine === 'whisper' && <label className="block text-[12px] font-medium text-[#666666] mb-4">
-          计算设备
-          <select value={computeDevice} onChange={(event) => setComputeDevice(event.target.value as 'auto' | 'wasm')} disabled={active} className="block mt-1.5 w-full h-11 border border-[#e0e0e0] rounded-md bg-white px-3 text-[14px] text-[#222222]">
-            <option value="auto">自动选择 · GPU 优先</option>
-            <option value="wasm">CPU 兼容模式 · 较小下载</option>
-          </select>
-        </label>}
         {!transcriptionOnly && <div className="mb-4">
           <TranslationModelSelect value={model} onChange={setModel} disabled={active} />
         </div>}
@@ -155,13 +149,13 @@ export function RealtimeTranslation({ onBack }: { onBack: () => void }) {
         {!transcriptionOnly && session.translationPending > 0 && <p role="status" className="mt-3 text-[12px] text-[#666666]">
           {session.isListening ? '正在接收语音' : '收音已结束'} · {session.translationPending} 段译文待完成
         </p>}
-        {asrEngine === 'whisper' && <p role="status" className="mt-3 text-[12px] text-[#666666]">
-          {session.preparation?.message || `Whisper Tiny · ${computeDevice === 'wasm' ? 'CPU 模型约 45 MB' : 'GPU 模型约 124 MB，不支持时回退 CPU'}，另需加载运行组件；之后可使用缓存。`}
+        {asrEngine === 'sherpa' && <p role="status" className="mt-3 text-[12px] text-[#666666]">
+          {session.preparation?.message || '中英流式模型约 50 MB，运行组件约 12 MB；首次加载后可使用缓存。'}
           {session.status === 'preparing-model' && session.preparation?.progress !== undefined && ` · ${session.preparation.progress}%`}
         </p>}
         <p className="mt-3 text-[11px] leading-5 text-[#8a8a8a]">
-          {asrEngine === 'whisper' ? `语音在当前浏览器识别，不上传音频。${transcriptionOnly ? '仅转文字时不调用翻译服务。' : '识别文字将发送给翻译服务。'}` : '语音将发送至在线识别服务。'}
-          识别结果按短片段更新，请允许麦克风访问，并核对人名和专业术语。
+          {asrEngine === 'sherpa' ? `语音在当前浏览器持续识别，边说边更新文字，停顿后确认。${transcriptionOnly ? '仅转文字时不调用翻译服务。' : '识别文字将发送给翻译服务。'}` : '语音将发送至在线识别服务。'}
+          请允许麦克风访问，并核对人名和专业术语。
         </p>
       </div>
 
@@ -174,7 +168,7 @@ export function RealtimeTranslation({ onBack }: { onBack: () => void }) {
           <div className={transcriptionOnly ? '' : 'grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-[#eeeeee]'}>
             <div className="p-4 sm:p-5 min-h-[112px] min-w-0">
               <p className="text-[11px] uppercase tracking-wide text-[#999999] mb-2">原文</p>
-              <p className="text-[16px] leading-7 text-[#222222] whitespace-pre-wrap break-words">{session.current.sourceText}</p>
+              <LiveTranscript segment={session.current} />
             </div>
             {!transcriptionOnly && <div className="p-4 sm:p-5 min-h-[112px] min-w-0 bg-[#fcfcfd]">
               <TranslationCaption segment={session.current} large onRetry={() => engine.retryTranslation(session.current!.id)} />
@@ -191,7 +185,10 @@ export function RealtimeTranslation({ onBack }: { onBack: () => void }) {
             <h2 className="text-[13px] font-semibold text-[#333333]">{transcriptionOnly ? '已确认字幕' : '字幕记录'}</h2>
             {failedTranslations > 0 && !transcriptionOnly && <button type="button" onClick={() => engine.retryTranslation()} className="text-[12px] text-[#b42318]">重试 {failedTranslations} 段未完成译文</button>}
           </div>
-          <ol className="divide-y divide-[#eeeeee] max-h-[48vh] overflow-y-auto">
+          <ol ref={historyRef} onScroll={(event) => {
+            const list = event.currentTarget;
+            followHistory.current = list.scrollHeight - list.scrollTop - list.clientHeight < 48;
+          }} className="divide-y divide-[#eeeeee] max-h-[48vh] overflow-y-auto">
             {session.segments.map((segment) => (
               <li key={segment.id} className={`${transcriptionOnly ? '' : 'grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-6'} px-4 py-3.5 sm:px-5`}>
                 <p className="text-[14px] leading-6 text-[#555555] min-w-0 whitespace-pre-wrap break-words">{segment.sourceText}</p>
@@ -210,6 +207,14 @@ export function RealtimeTranslation({ onBack }: { onBack: () => void }) {
 }
 
 function formatMetric(value: number | null) { return value === null ? '—' : `${Math.round(value)} ms`; }
+
+function LiveTranscript({ segment }: { segment: RealtimeSubtitleSegment }) {
+  const stable = segment.sourceText.startsWith(segment.stableSourceText) ? segment.stableSourceText : '';
+  return <p className="text-[16px] leading-7 whitespace-pre-wrap break-words" aria-label="正在修订的识别文字">
+    <span className="text-[#222222]">{stable}</span>
+    <span className="text-[#1677ff]">{segment.sourceText.slice(stable.length)}</span>
+  </p>;
+}
 
 function TranslationCaption({ segment, large = false, onRetry }: { segment: RealtimeSubtitleSegment; large?: boolean; onRetry: () => void }) {
   const labels = { off: '', queued: '等待翻译', streaming: '正在生成 · 可修订', draft: '草稿 · 句末确认', confirmed: '译文已确认', error: '译文未完成' };

@@ -2,12 +2,17 @@ class SilviteAudioCaptureProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.pending = [];
-    this.blockSize = 2048;
+    this.blockSize = Math.max(128, Math.round(sampleRate * 0.04));
     this.startedAt = currentTime;
+    this.paused = false;
     this.port.onmessage = ({ data }) => {
       if (data?.type === 'flush') {
         this.flush();
         this.port.postMessage({ type: 'flush-complete' });
+      } else if (data?.type === 'pause') {
+        if (data.paused) this.flush();
+        this.paused = !!data.paused;
+        this.startedAt = currentTime;
       }
     };
   }
@@ -25,6 +30,7 @@ class SilviteAudioCaptureProcessor extends AudioWorkletProcessor {
   }
 
   process(inputs) {
+    if (this.paused) return true;
     const channels = inputs[0];
     if (!channels?.length) return true;
     const input = channels[0];

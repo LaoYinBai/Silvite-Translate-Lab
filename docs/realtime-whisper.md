@@ -1,5 +1,7 @@
 # Whisper 本机语音转文字
 
+历史实现记录：2026-11-07 默认本地引擎已改为 [中英流式 Zipformer](realtime-zipformer.md)。下文描述旧 Whisper 方案，其权重不再进入默认构建。
+
 2026-11-06：在当前静态前端内增加 Whisper STT，复用音频采集、VAD、分段、字幕合并和会话控制。
 本机计算指浏览器的 CPU/WASM 或 WebGPU；用户无需安装 Python、FFmpeg、Whisper 服务或桌面程序。
 

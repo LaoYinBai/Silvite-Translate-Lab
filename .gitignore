@@ -13,6 +13,8 @@ dist-ssr
 # Generated, pinned speech models and ONNX runtime; prepare at dev/build time.
 /public/whisper/
 /.cache/whisper/
+/public/asr/
+/.cache/sherpa/
 *.local
 
 # Editor directories and files

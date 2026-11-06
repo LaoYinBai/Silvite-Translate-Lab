@@ -352,20 +352,20 @@ cloud-functions/api/prompts.mjs
 
 ### 实时翻译 Beta
 
-侧栏「实时翻译」（手机从「菜单」进入）默认使用浏览器内 Whisper Tiny 和「仅转文字」。
-音频经 AudioWorklet 采集并按停顿或短窗口交给 Worker 识别；桌面默认 GPU 优先，触控设备默认
-CPU 兼容模式。音频不上传；取消「仅转文字」后，识别文字会调用 `/api/realtime/translate`
+侧栏「实时翻译」（手机从「菜单」进入）默认使用本机中英流式 Zipformer 和「仅转文字」。
+音频经 AudioWorklet 采集后持续交给 Worker 解码，边说边更新文字，停顿后确认。
+手机与 PC 都使用单线程 CPU/WASM SIMD。音频不上传；取消「仅转文字」后，识别文字会调用 `/api/realtime/translate`
 生成流式译文草稿，句末再确认。识别与翻译独立排队，字幕记录区标明待完成和失败状态，支持逐段重试。
 模型加载后可以断网继续本机转写；页面离线重载尚未支持。
 
 可选在线 MiMo 引擎调用 `/api/realtime/transcribe`，以 SSE 接收修订文本；在线 ASR 使用
-`mimo-v2.5-asr`，文字翻译统一使用 `mimo-v2.6-flash`，且关闭 Thinking。
-2026-11-06 线上 STT 实测返回 502；当前工作区已修复缺失 `Request.signal` 导致的异常，尚未部署。
+`mimo-v2.5-asr`；文字翻译在 DeepSeek Flash 与 GLM 5.3 Flash 中选择，默认 DeepSeek，关闭思考。
 
-当前只支持中文、英文及自动识别，按短片段更新；Tiny 对中文、人名和术语可能识别不准，需复核。
+当前只支持中文、英文及自动识别，人名和术语可能识别不准，需复核。
 浏览器需在 HTTPS 或 localhost 中支持 AudioWorklet 并允许麦克风。实际 iOS/Android 仍需真机验收。
-`npm run dev` / `npm run build` 会准备模型与运行组件，发布时必须包含 `dist/whisper/`。
-使用和资源说明见 [Whisper 静态交付](docs/realtime-whisper.md)，实现与状态机见
+`npm run dev` / `npm run build` 会准备模型与运行组件，发布时必须包含 `dist/asr/`。
+模型与词表约 49.8 MB，引擎与 JS 约 11.7 MB；按需加载且可缓存。
+使用和资源说明见 [Zipformer 静态交付](docs/realtime-zipformer.md)，实现与状态机见
 [实时翻译架构](docs/realtime-translation-architecture.md)，实测范围见
 [STT 验证记录](docs/research/2026-11-06-stt-verification.md)。
 流式字幕的本地实现、协议与未验证环节见 [实施记录](docs/realtime-streaming.md)。

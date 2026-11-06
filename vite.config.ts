@@ -55,19 +55,19 @@ function pdfjsAssets(): Plugin {
 
 // ONNX imports its runtime module dynamically. Serve generated assets directly
 // in dev too, including models prepared after the dev server was started.
-function whisperRuntimeAssets(): Plugin {
+function localASRAssets(): Plugin {
   return {
-    name: 'whisper-runtime-assets',
+    name: 'local-asr-assets',
     configureServer(server) {
       server.middlewares.use((request, response, next) => {
         const url = (request.url ?? '').split('?')[0]
-        if (!url.startsWith('/whisper/')) return next()
-        const assetRoot = path.join(server.config.publicDir, 'whisper')
-        const filePath = path.resolve(assetRoot, url.slice('/whisper/'.length))
+        if (!url.startsWith('/asr/')) return next()
+        const assetRoot = path.join(server.config.publicDir, 'asr')
+        const filePath = path.resolve(assetRoot, url.slice('/asr/'.length))
         if (!filePath.startsWith(`${assetRoot}${path.sep}`) || !existsSync(filePath)) return next()
         const stat = statSync(filePath)
         if (!stat.isFile()) return next()
-        const mime = { '.mjs': 'text/javascript', '.json': 'application/json', '.wasm': 'application/wasm' }
+        const mime = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.json': 'application/json', '.wasm': 'application/wasm' }
         response.setHeader('Content-Type', mime[path.extname(filePath) as keyof typeof mime] ?? 'application/octet-stream')
         response.setHeader('Content-Length', stat.size)
         if (request.method === 'HEAD') return response.end()
@@ -83,7 +83,7 @@ export default defineConfig({
     react(),
     tailwindcss(),
     pdfjsAssets(),
-    whisperRuntimeAssets(),
+    localASRAssets(),
   ],
   base: '/',
   worker: { format: 'es' },
@@ -92,7 +92,7 @@ export default defineConfig({
     sourcemap: false,
   },
   server: {
-    watch: { ignored: ['**/public/whisper/**', '**/.cache/whisper/**'] },
+    watch: { ignored: ['**/public/whisper/**', '**/.cache/whisper/**', '**/public/asr/**', '**/.cache/sherpa/**'] },
     proxy: {
       '/api': {
         target: 'http://localhost:3001',

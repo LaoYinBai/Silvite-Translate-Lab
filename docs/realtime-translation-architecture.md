@@ -1,41 +1,41 @@
 # 实时翻译 Beta 架构
 
-更新日期：2026-11-06
+更新日期：2026-11-07
 
 ## 目标与边界
 
-本功能提供语音转文字和可修订双语字幕。默认使用浏览器内的 Whisper Tiny，且默认“仅转文字”；
+本功能提供语音转文字和可修订双语字幕。默认使用浏览器内流式 Zipformer，且默认“仅转文字”；
 这一模式不需要 API Key 或转换后端，音频及识别文字不上传。可选在线 MiMo 识别；开启双语翻译时，
 识别文字通过现有 EdgeOne Cloud Functions 翻译。浏览器不持有 MiMo 密钥。当前不提供朗读、
 音频保存或跨会话字幕历史。
 
-部署平台没有可以从本仓库可靠配置并验证的 Cloud Function 持久 WebSocket 会话，因此采用：
+本机持续解码与在线分段识别采用不同输入通道，字幕和翻译调度共用：
 
 ```text
-麦克风 → AudioWorklet → VAD / WAV 短片段
-       → 本机 Whisper Worker（WebGPU / CPU WASM）→ 识别文字
+麦克风 → AudioWorklet → 约 40 ms PCM
+       → 本机 Zipformer Worker（CPU WASM）→ 可替换的识别假设 / 句末定稿
        或
-       → POST /api/realtime/transcribe → MiMo ASR SSE
+       → VAD / WAV 短片段 → POST /api/realtime/transcribe → MiMo ASR SSE
        → 本站带 sequence/revision 的 partial/final SSE
        → 重叠合并 → 临时字幕
        → 仅转文字：本地确认字幕
-       或 → 独立翻译队列 → POST /api/realtime/translate → MiMo V2.6 Flash SSE
+       或 → 独立翻译队列 → POST /api/realtime/translate → DeepSeek / GLM SSE
                      → 可修订译文草稿 → 句末确认字幕
 ```
 
-在线识别的每个音频窗独立发起 POST 与 SSE 请求。本机 Whisper 为短片段批次推理，识别完一段再更新，
-不提供逐字流式识别。
+在线识别的每个音频窗独立发起 POST 与 SSE 请求。本机识别持续保持 OnlineStream，接收新 PCM，
+边解码边替换当前语段文字，停顿端点定稿。详见 [Zipformer 实施与验证范围](realtime-zipformer.md)。
 
 ## 模型与接口
 
 | 用途 | 路径 | 模型 | 调用行为 |
 | --- | --- | --- | --- |
-| 普通文本/图片/文档翻译 | `POST /api/translate` | `mimo-v2.6-flash` | 既有 OpenAI-compatible SSE 及 canonical final 保持不变 |
-| 本机语音识别（默认） | 浏览器 Worker | 多语 `onnx-community/whisper-tiny` | GPU 用 fp32 encoder / q4 decoder，CPU 用 q8；本站静态资源、无语音 API 请求 |
+| 普通文本/图片/文档翻译 | `POST /api/translate` | `deepseek-flash` / `glm-5.3-flash` | 既有 OpenAI-compatible SSE 及 canonical final 保持不变 |
+| 本机语音识别（默认） | 浏览器 Worker | 中英 small Zipformer，三部分 int8 | CPU/WASM SIMD 持续解码；本站静态资源、无语音 API 请求 |
 | 实时语音识别 | `POST /api/realtime/transcribe` | `mimo-v2.5-asr` | 仅接受 WAV PCM16/16kHz/mono；服务端向上游提交单段音频并将 SSE 转为自有 partial/final 事件 |
-| 实时语段翻译 | `POST /api/realtime/translate` | `mimo-v2.6-flash` | JSON 请求、start/delta/final/error SSE 响应；`thinking: {type: "disabled"}`，最多带之前 8 条语段 |
+| 实时语段翻译 | `POST /api/realtime/translate` | `deepseek-flash` / `glm-5.3-flash` | JSON 请求、start/delta/final/error SSE 响应；`thinking: {type: "disabled"}`，最多带之前 8 条语段 |
 
-两个实时 handler 使用服务端 `MIMO_API_KEY`；请求日志不记录 key 或 Base64 音频。实时识别语言
+在线 ASR 使用服务端 `MIMO_API_KEY`，文字翻译使用双模型共用的 `DEEPSEEK_API_KEY`；请求日志不记录 key 或 Base64 音频。实时识别语言
 仅接受 `auto`、`zh`、`en`。源语言 `auto` 用识别文本中的汉字/拉丁字母比例在 zh/en 间归类；
 目标语言 `auto` 选择相反语言。
 
@@ -47,12 +47,12 @@
   不支持时在线性插值重采样至 16 kHz。
 - WAV 编码为标准 RIFF、PCM、16-bit、mono、16 kHz；服务端在调用 MiMo 前再次校验 RIFF/WAVE、
   编码、声道、采样率和位深。
-- RMS 能量 VAD 忽略静音，短静音保留为停顿判断；保留短前滚以避免切掉句首。
+- 在线 MiMo 分段路径以 RMS 能量 VAD 忽略静音，短静音保留为停顿判断；保留短前滚以避免切掉句首。
 - 当前参数集中在 `src/services/realtime/config.ts`：采集窗 2200 ms、overlap 350 ms、静音确认
   520 ms、最短有效语音 360 ms、前滚 160 ms、RMS 阈值 0.012。它们是 MVP 默认值，应根据开发态
   实测调优，不代表所有环境的最优延迟。
-- 本机 Whisper 覆盖窗口为 6000 ms、overlap 800 ms、静音确认 650 ms，短句在停顿时提前提交。
-  分窗前先保留真实重叠采样及未消费尾部，避免只重叠时间戳却丢失实际音频。
+- 本机 Zipformer 接收连续 PCM，不依赖重叠 WAV 窗口；模型端点设置为有语音后尾部静音约 650 ms、
+  无语音静音 2.4 s、最长语段 20 s。它们是端点参数，不等于用户看到结果的保证延迟。
 - 用户点击开始时先解锁 AudioContext，再异步加载模型，模型就绪后才请求麦克风；这样避免首次模型
   下载耗尽移动 Safari 的用户手势。取消、权限延迟返回及卸载时均关闭采集资源。
 - 音频 chunker 先在时间窗边界切分，停顿/停止时提交最后一个有语音的片段；纯静音不请求 ASR。
@@ -107,22 +107,23 @@ Provisional 只翻译当前完整源文快照；句末以 `confirmed` 阶段重�
 ## Provider 边界
 
 `src/services/realtime/providers.ts` 定义 `ASRProvider`、`TranslationProvider` 和预留的
-`TTSProvider`。ASR 支持 `WhisperASRProvider` 与 `XiaomiRealtimeASRProvider`，翻译使用
-`XiaomiRealtimeTranslationProvider`。ASR 可提供 prepare / dispose、执行位置和分窗参数；本机模型
-加载、GPU/CPU 推理在 `whisper.worker.ts`，取消时终止 Worker，重开时创建新实例。界面只依赖
-Provider；TTS 目前只有接口。
+`TTSProvider`。ASR 支持 `SherpaStreamingASRProvider` 与 `XiaomiRealtimeASRProvider`，翻译使用
+`ServerRealtimeTranslationProvider`。本机 Provider 提供 openStream / push / finish / dispose，
+通过带语段 ID 和 revision 的临时/最终文本事件连接会话；在线模式保留 transcribe。浏览器模型与推理
+在 `sherpa/sherpa.worker.ts`，未来 Android 可替换 Provider。界面只依赖 Provider；TTS 目前只有接口。
 
-移动触控设备默认 CPU 兼容模式；桌面默认自动选择 GPU，GPU 缺失或推理失败时尝试 CPU。
-用户可主动选择 CPU。模型下载与发布步骤见 [Whisper 静态交付](realtime-whisper.md)。
+手机与 PC 当前均用单线程 CPU/WASM SIMD，不依赖 WebGPU。模型下载与发布步骤见 [Zipformer 静态交付](realtime-zipformer.md)。
 
 未来替换为持续 WebSocket ASR 时，只需替换 ASR Provider 与传输适配，不要求改变字幕段和翻译
 Provider；如启用 TTS，应只朗读确认后的译文，避免朗读临时修订内容。
 
 ## 并发、限流与错误恢复
 
-- ASR 消费为有界串行队列，最多 3 个等待音频窗；队列接近上限时停用麦克风轨道，积压回落后恢复，
+- 在线 ASR 消费为有界串行队列，最多 3 个等待音频窗；队列接近上限时停用麦克风轨道，积压回落后恢复，
   已经交付的 Worklet 尾部继续保留，因此瞬时可能多出尾窗。待确认译文达到 12 段时也暂停收音，
   ASR 继续处理已采集音频；不会为了腾队列而丢掉句末任务。采集暂停期间说的话无法记录，界面明确提示。
+- 本机持续识别按待处理 PCM 时长背压，达到 1.5 秒暂停收音，回落到 0.4 秒继续，硬上限 12 秒；
+  错误时保留已显示文字并提示结束重开，不伪装为可完整重放的音频窗。
 - ASR / 翻译网络错误、408、429、5xx 使用最多 2 次指数退避重试，并加入 jitter；用户可显式重试
   超过自动上限后保留的当前音频窗或最终修订。429 显示节流状态，不无限重试。
 - 用户停止时先停麦克风并 flush 尚有价值的音频窗，处理 ASR 后将最后一段交给独立翻译队列，
