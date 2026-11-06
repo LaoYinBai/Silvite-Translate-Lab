@@ -6,9 +6,10 @@ interface SidebarProps {
   onNewChat: () => void;
   onSamplePicked?: () => void;
   onRealtime?: () => void;
+  onCorpus?: () => void;
 }
 
-export function Sidebar({ onNewChat, onSamplePicked, onRealtime }: SidebarProps) {
+export function Sidebar({ onNewChat, onSamplePicked, onRealtime, onCorpus }: SidebarProps) {
   const { isServiceOnline } = useTranslationStore();
 
   return (
@@ -56,6 +57,12 @@ export function Sidebar({ onNewChat, onSamplePicked, onRealtime }: SidebarProps)
         </div>
       )}
       
+      {onCorpus && <div className="px-2.5 pb-2.5">
+        <button type="button" onClick={onCorpus} className="w-full min-h-11 flex items-center gap-2.5 px-3 rounded-lg border border-[#e4e6ea] bg-white text-[13px] font-medium text-[#555555] hover:bg-[#f9fafb] transition-colors">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M2.5 3h6v14h-6zM11.5 3h6v14h-6zM5 7h1M5 10h1M14 7h1M14 10h1M8.5 10h3" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/></svg>
+          中英语料工具 <span className="ml-auto text-[10px] text-[#888888]">TMX / RTF / SDLTM</span>
+        </button>
+      </div>}
       {/* Demo samples - explicitly labeled, not fake history */}
       <div className="flex-1 overflow-y-auto">
         <div className="mb-2 px-2.5">

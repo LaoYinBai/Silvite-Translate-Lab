@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslationStore, type TranslationResult } from '../../store/translationStore';
 import { ExportMenu } from '../ExportMenu/ExportMenu';
 import { languageLabel } from '../../services/export/types';
 import { ParagraphComparison } from './ParagraphComparison';
 
-export function ResultArea() {
+export function ResultArea({ onOpenCorpus }: { onOpenCorpus?: () => void } = {}) {
   const { result, isLoading, error, isStreaming, streamingText, streamStatus, progressPercent } = useTranslationStore();
   
   if (!result && !isLoading && !error) {
@@ -14,7 +14,7 @@ export function ResultArea() {
   return (
     <div className="w-full mt-6 md:mt-10">
       {error && <ErrorState message={error} />}
-      {result && !isLoading && <ResultCard result={result} />}
+      {result && !isLoading && <ResultCard result={result} onOpenCorpus={onOpenCorpus} />}
       {!result && !error && isLoading && (
         isStreaming && (streamingText || streamStatus) ? (
           <StreamingCard text={streamingText} status={streamStatus} progress={progressPercent} />
@@ -216,10 +216,14 @@ const SEGMENT_TYPE_LABELS: Record<string, string> = {
   text: '文本',
 };
 
-function ResultCard({ result }: { result: TranslationResult }) {
+function ResultCard({ result, onOpenCorpus }: { result: TranslationResult; onOpenCorpus?: () => void }) {
   const { showTranslationNotes, toggleShowTranslationNotes, isDemoMode } = useTranslationStore();
   const [copySuccess, setCopySuccess] = useState(false);
   const [showAlignment, setShowAlignment] = useState(true);
+  const [openingCorpus, setOpeningCorpus] = useState(false);
+  const [corpusError, setCorpusError] = useState<string | null>(null);
+  const corpusLive = useRef(true);
+  useEffect(() => { corpusLive.current = true; return () => { corpusLive.current = false; }; }, []);
   const isDemo = isDemoMode || result.source === 'demo';
   
   const handleCopy = async () => {
@@ -243,6 +247,20 @@ function ResultCard({ result }: { result: TranslationResult }) {
     // Re-runs with the current mode/context/terminology/language direction
     // already held in the store; isLoading drives the UI.
     void useTranslationStore.getState().translate();
+  };
+  const handleOpenCorpus = async () => {
+    if (!result.paragraphAlignment || !onOpenCorpus || openingCorpus) return;
+    setOpeningCorpus(true); setCorpusError(null);
+    try {
+      const [{ corpusFromTranslation }, { useCorpusStore }] = await Promise.all([
+        import('../../services/corpus/fromTranslation'), import('../../store/corpusStore'),
+      ]);
+      if (!corpusLive.current || useTranslationStore.getState().result !== result) return;
+      if (useCorpusStore.getState().project && !window.confirm('将当前翻译整理为新语料项目。请先保存语料工具中的现有项目。是否继续？')) return;
+      useCorpusStore.getState().setProject(corpusFromTranslation(result.paragraphAlignment));
+      onOpenCorpus();
+    } catch (error) { if (corpusLive.current) setCorpusError(error instanceof Error ? error.message : '未能整理为语料项目。'); }
+    finally { if (corpusLive.current) setOpeningCorpus(false); }
   };
   
   return (
@@ -321,10 +339,12 @@ function ResultCard({ result }: { result: TranslationResult }) {
           <div className="flex flex-wrap gap-2 mb-4" aria-label="结果显示方式">
             <button type="button" aria-pressed={showAlignment} onClick={() => setShowAlignment(true)} className={`btn btn-secondary h-10 ${showAlignment ? 'bg-[#e6f4ff] border-[#1677ff] text-[#1677ff]' : ''}`}>中英段落对照</button>
             <button type="button" aria-pressed={!showAlignment} onClick={() => setShowAlignment(false)} className={`btn btn-secondary h-10 ${!showAlignment ? 'bg-[#e6f4ff] border-[#1677ff] text-[#1677ff]' : ''}`}>完整译文</button>
+            {onOpenCorpus && <button type="button" disabled={openingCorpus} onClick={() => void handleOpenCorpus()} className="btn btn-secondary min-h-10 md:ml-auto">{openingCorpus ? '正在整理…' : '制作 TMX / RTF 语料'}</button>}
           </div>
         )}
         {result.alignmentStatus === 'pending' && <p role="status" className="mb-4 text-[12px] text-[#888888]">译文已生成，正在整理中英文段落对照…</p>}
         {result.alignmentError && <p role="status" className="mb-4 text-[12px] text-[#888888]">{result.alignmentError}</p>}
+        {corpusError && <p role="alert" className="mb-4 text-[12px] text-[#b42318]">{corpusError}</p>}
         {result.paragraphAlignment && showAlignment ? (
           <ParagraphComparison alignment={result.paragraphAlignment} />
         ) : (

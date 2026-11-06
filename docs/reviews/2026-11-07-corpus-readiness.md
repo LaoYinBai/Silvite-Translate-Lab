@@ -108,3 +108,7 @@ Task 0 即建立最小实验：使用全新文本，在临时副本上检查 has
 - E7：[SQLite npm 子项目说明](https://sqlite.org/wasm/doc/trunk/npm.md)、[包元数据](https://registry.npmjs.org/@sqlite.org/sqlite-wasm/3.54.1-build1)、[核心声明](https://sqlite.org/wasm/doc/trunk/license.md)。
 
 来源是可行性和约束依据；没有把联网文档或模型下载成功当作端到端功能验证。本轮模型元数据 API 请求失败，未确认该转换仓的不可变 revision 和全部权重文件哈希，此项继续留在 Task 0。
+
+## 后续实施状态（2026-11-07）
+
+以上保留为开工时的审查记录。后续已完成 TMX / 常见双栏 RTF、可校正的中英双文档对齐及项目保存，并按用户新增授权接入带「不保证兼容 Trados」说明的实验性 SDLTM 导出。官方空模板副本在 SQLite WASM 内补齐真实样本的 20 张业务表、25 个普通 SQL 索引，再写入当前工作文本；五组 183 条记录的结构与字符回读已核对。此处不将该结果等同于专有分词、模糊搜索、原生 Trados、专业对齐保留集或手机端验收。当前实现、资源版本、具体证据与限制见 [语料工具说明](../corpus-tools.md)。

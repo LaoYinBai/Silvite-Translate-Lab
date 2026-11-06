@@ -6,17 +6,20 @@
   "scripts": {
     "prepare:whisper": "node scripts/prepare-whisper.mjs",
     "prepare:asr": "node scripts/prepare-asr.mjs",
-    "predev": "npm run prepare:asr",
+    "prepare:corpus": "node scripts/prepare-corpus.mjs",
+    "predev": "npm run prepare:asr && npm run prepare:corpus",
     "dev": "vite",
     "api": "node --env-file=.env.local --experimental-strip-types scripts/local-api.ts",
     "test": "node --test tests/*.test.mjs",
-    "prebuild": "npm run prepare:asr",
+    "prebuild": "npm run prepare:asr && npm run prepare:corpus",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@bjorn3/browser_wasi_shim": "0.3.0",
     "@huggingface/transformers": "3.8.1",
+    "@sqlite.org/sqlite-wasm": "3.54.1-build1",
     "docx": "^9.7.1",
     "jspdf": "^4.2.1",
     "mammoth": "^1.12.2",
