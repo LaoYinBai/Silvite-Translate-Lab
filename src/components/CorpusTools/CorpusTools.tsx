@@ -7,14 +7,14 @@ import { textDocument } from '../../services/alignment/segment';
 import { assertCorpusCoverage } from '../../services/alignment/corpusAlign';
 import { exportTmx, exportTmxLosses } from '../../services/corpus/tmx';
 import { exportRtf, rtfExportLosses } from '../../services/corpus/rtf';
-import { sdltmExportLosses } from '../../services/corpus/sdltm';
+import { sdltmExportLosses, sdltmInput } from '../../services/corpus/sdltm';
+import { corpusDocumentName, corpusExportName, corpusFilename } from '../../services/corpus/filename';
 import { swapDirection } from '../../services/corpus/model';
 import { loadLocalProject, saveProjectLocally, serializeProject } from '../../services/corpus/persistence';
 import { downloadBlob } from '../../services/export/download';
-import { languageLabel } from '../../services/export/types';
 import { CorpusDialog, CorpusEditor } from './CorpusEditor';
 
-const FIELD = 'w-full rounded-md border border-[#d9dde4] bg-white px-3 py-2 text-[14px] text-[#222222]';
+const FIELD = 'w-full min-h-11 rounded-lg border border-border bg-bg-white px-3 py-2 text-[14px] text-text placeholder:text-text-placeholder';
 const BUTTON = 'btn btn-secondary min-h-11 text-[12px]';
 interface InputDocument { file: File | null; text: string }
 type ExportFormat = 'tmx' | 'rtf' | 'sdltm';
@@ -22,7 +22,6 @@ type ExportFormat = 'tmx' | 'rtf' | 'sdltm';
 export default function CorpusTools({ onBack }: { onBack: () => void }) {
   const project = useCorpusStore(state => state.project);
   const saving = useCorpusStore(state => state.saving);
-  const [newProjectOpen, setNewProjectOpen] = useState(() => !project);
   const [tmxDirection, setTmxDirection] = useState<'auto' | 'zh-en' | 'en-zh'>('auto');
   const [leftRtfLanguage, setLeftRtfLanguage] = useState('zh-CN');
   const [chinese, setChinese] = useState<InputDocument>({ file: null, text: '' });
@@ -33,9 +32,10 @@ export default function CorpusTools({ onBack }: { onBack: () => void }) {
   const [progress, setProgress] = useState<{ message: string; fraction?: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [exporting, setExporting] = useState<{ format: ExportFormat; snapshot: CorpusProject; losses: string[] } | null>(null);
+  const [exporting, setExporting] = useState<{ format: ExportFormat; snapshot: CorpusProject; losses: string[]; units: number } | null>(null);
   const operation = useRef<AbortController | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
+  const projectImportRef = useRef<HTMLInputElement>(null);
   const resultHeading = useRef<HTMLHeadingElement>(null);
   const focusResult = useRef(false);
   const live = useRef(true);
@@ -54,7 +54,6 @@ export default function CorpusTools({ onBack }: { onBack: () => void }) {
       if (live.current && saved && !useCorpusStore.getState().project) {
         focusResult.current = true;
         useCorpusStore.getState().setProject(saved);
-        setNewProjectOpen(false);
         setNotice('已恢复上次保存在此浏览器中的语料项目。');
       }
     }).catch(() => { /* manual project files remain available */ });
@@ -111,7 +110,6 @@ export default function CorpusTools({ onBack }: { onBack: () => void }) {
       if (current()) {
         focusResult.current = true;
         useCorpusStore.getState().setProject(result);
-        setNewProjectOpen(false);
         setNotice('已保留 ' + result.units.length + ' 条对应记录，空侧和未匹配内容均可在编辑器中核对。');
       }
     } catch (error) {
@@ -145,6 +143,7 @@ export default function CorpusTools({ onBack }: { onBack: () => void }) {
       signal.throwIfAborted();
       const result = await alignCorpusInBrowser({ source: direction === 'zh-en' ? zh.document : en.document,
         target: direction === 'zh-en' ? en.document : zh.document, mode }, signal, report);
+      result.exportName = corpusDocumentName([chinese.file?.name, english.file?.name].filter((name): name is string => !!name));
       result.warnings.push(...[...zh.warnings, ...en.warnings].map(message => ({ message })));
       return result;
     });
@@ -158,14 +157,16 @@ export default function CorpusTools({ onBack }: { onBack: () => void }) {
       const target = current.documents.find(document => document.language === current.targetLanguage);
       if (!source || !target) throw new Error('原文档不完整，无法重新对齐。');
       if (current.excludedUnits?.length) throw new Error('请先恢复排除记录再重新自动对齐，避免重复导入已排除内容。');
-      return alignCorpusInBrowser({ source, target, mode, anchors: current.units.filter(unit => unit.locked), name: current.name }, signal, report);
+      const result = await alignCorpusInBrowser({ source, target, mode, anchors: current.units.filter(unit => unit.locked), name: current.name }, signal, report);
+      result.exportName = corpusExportName(current);
+      return result;
     });
   };
   const saveProject = () => {
     try {
       const current = useCorpusStore.getState().project;
       if (!current) return;
-      downloadBlob(new Blob([new Uint8Array(serializeProject(current))], { type: 'application/json;charset=utf-8' }), filename(current, 'corpus.json'));
+      downloadBlob(new Blob([new Uint8Array(serializeProject(current))], { type: 'application/json;charset=utf-8' }), corpusFilename(current, 'corpus.json'));
       setNotice('项目已保存，包含原文位置、标签、人工调整、排除记录和复核状态。');
     } catch (error) { setError(error instanceof Error ? error.message : '保存项目失败。'); }
   };
@@ -175,7 +176,8 @@ export default function CorpusTools({ onBack }: { onBack: () => void }) {
       const current = useCorpusStore.getState().project;
       if (!current) return;
       const losses = format === 'sdltm' ? sdltmExportLosses(current) : format === 'tmx' ? exportTmxLosses(current) : rtfExportLosses(current);
-      setError(null); setNotice(null); setExporting({ format, snapshot: current, losses });
+      const units = format === 'sdltm' ? sdltmInput(current).pairs.length : current.units.length;
+      setError(null); setNotice(null); setExporting({ format, snapshot: current, losses, units });
     } catch (error) { setError(error instanceof Error ? error.message : '无法准备导出。'); }
   };
   const closeExport = () => {
@@ -204,6 +206,7 @@ export default function CorpusTools({ onBack }: { onBack: () => void }) {
         });
         bytes = result.bytes;
         message = '已导出 ' + result.validation.units + ' 行 SDLTM（实验），工作方向 ' + result.validation.sourceLanguage + ' → ' + result.validation.targetLanguage
+          + (result.validation.skippedEmptyUnits ? '，跳过 ' + result.validation.skippedEmptyUnits + ' 行双空记录' : '')
           + '。本地结构、文本与索引回读检查通过；如 Trados 提示重建索引，请按提示操作。不保证兼容 Trados。';
       } else bytes = format === 'tmx' ? exportTmx(snapshot) : exportRtf(snapshot);
       if (!current()) return;
@@ -212,7 +215,7 @@ export default function CorpusTools({ onBack }: { onBack: () => void }) {
         return;
       }
       const type = format === 'sdltm' ? 'application/octet-stream' : format === 'tmx' ? 'application/xml;charset=utf-8' : 'application/rtf';
-      downloadBlob(new Blob([new Uint8Array(bytes)], { type }), filename(snapshot, format));
+      downloadBlob(new Blob([new Uint8Array(bytes)], { type }), corpusFilename(snapshot, format));
       setExporting(null); setError(null); setNotice(message);
     } catch (error) {
       if (current()) {
@@ -236,108 +239,122 @@ export default function CorpusTools({ onBack }: { onBack: () => void }) {
         <p className="mt-1 text-[13px] leading-6 text-[#777777]">导入中文和英文 → 开始对齐 → 核对双语行 → 导出。文件在此浏览器内处理。</p></div>
       {project && <span className="text-[11px] text-[#888888]" role="status">{saving === 'saved' ? '已自动保存在此浏览器' : saving === 'saving' ? '正在本地保存…' : saving === 'error' ? '自动保存失败，请下载项目文件' : '尚有待保存修改'}</span>}
     </div>
-    <details open={newProjectOpen} onToggle={event => setNewProjectOpen(event.currentTarget.open)} className="rounded-xl border border-[#e0e0e0] bg-white p-4 sm:p-5">
-      <summary className="cursor-pointer text-[15px] font-medium text-[#333333]">{project ? '新建对齐 / 导入其他项目' : '1. 导入中文与英文'}</summary>
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+    <section aria-label="双语文档选择与对齐" className="rounded-xl border border-[#e0e0e0] bg-white p-4 sm:p-5">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-[16px] font-semibold text-[#333333]">1. 选择双语文档</h2>
+        <span className="text-[11px] text-[#888888]">支持 TXT / Markdown / DOCX / RTF，也可粘贴正文</span>
+      </div>
+      <div className="grid gap-4 md:grid-cols-2">
         <DocumentInput label="中文文档" value={chinese} onChange={setChinese} disabled={busy} />
         <DocumentInput label="英文文档" value={english} onChange={setEnglish} disabled={busy} />
       </div>
-      <div className="mt-4 flex flex-wrap items-end gap-3">
-        <label className="w-full text-[12px] text-[#555555] sm:max-w-[260px]">工作方向（左侧 → 右侧）<select value={direction} disabled={busy} onChange={event => setDirection(event.target.value)} className={FIELD + ' mt-1'}><option value="zh-en">中文 → 英文</option><option value="en-zh">英文 → 中文</option></select></label>
-        <button type="button" className="btn btn-primary min-h-11" disabled={busy} onClick={beginAlignment}>开始对齐</button>
+      <div className="mt-5 grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
+        <label className="block min-w-0 text-[12px] text-[#555555]">
+          <span className="mb-2 block">工作方向（左侧 → 右侧）</span>
+          <select value={direction} disabled={busy} onChange={event => setDirection(event.target.value)} className={FIELD}>
+            <option value="zh-en">中文 → 英文</option><option value="en-zh">英文 → 中文</option>
+          </select>
+        </label>
+        <AlignmentOptions mode={mode} onChange={setMode} disabled={busy} />
+        <button type="button" className="btn btn-primary min-h-11 w-full md:min-w-[132px]" disabled={busy} onClick={beginAlignment}>开始对齐</button>
       </div>
-      <p className="mt-2 text-[11px] leading-5 text-[#888888]">每个文件最大 10 MiB；也可直接粘贴正文。{mode === 'semantic' ? '首次语义对齐需下载模型，可在高级选项切换快速对齐。' : '当前使用快速结构对齐，请在完成后逐行复核。'}</p>
-      <details className="mt-3 text-[12px] text-[#777777]">
-        <summary className="cursor-pointer py-1">高级选项：对齐方式与文件说明</summary>
-        <div className="mt-2 space-y-3 rounded-lg bg-[#fafafa] p-3">
-          <AlignmentOptions mode={mode} onChange={setMode} disabled={busy} />
-          <p className="text-[11px] leading-5">自动支持多句对应和留空；换序可在编辑器中人工调整。支持 TXT / Markdown / DOCX / RTF；首次解析 RTF / DOCX 需加载约 62 MB 解析资源。</p>
+      <p className="mt-3 text-[11px] leading-5 text-[#888888]">
+        {mode === 'semantic' ? '语义对齐在浏览器内比较中英文含义；首次需下载约 136 MB 模型及约 22 MB 运行资源，之后可使用缓存。' : '快速对齐无需下载模型，按长度、数字与顺序生成对应，请逐行复核。'}
+      </p>
+      <details className="mt-4 border-t border-[#e0e0e0] pt-4 text-[12px] text-[#777777]">
+        <summary className="cursor-pointer font-medium">已有双语语料？导入 TMX / RTF</summary>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div className="min-w-0">
+            <label className="block text-[12px] text-[#555555]">
+              <span className="mb-2 block">TMX 导入工作方向</span>
+              <select value={tmxDirection} disabled={busy} onChange={event => setTmxDirection(event.target.value as typeof tmxDirection)} className={FIELD}>
+                <option value="auto">自动（按有效文件头）</option><option value="zh-en">中文 → 英文</option><option value="en-zh">英文 → 中文</option>
+              </select>
+            </label>
+            <p className="mt-2 text-[11px] leading-5 text-[#888888]">自动识别文件中的语言标签，也可手动指定方向。</p>
+          </div>
+          <div className="min-w-0">
+            <label className="block text-[12px] text-[#555555]">
+              <span className="mb-2 block">RTF 原文 / 左列语言</span>
+              <select value={leftRtfLanguage} disabled={busy} onChange={event => setLeftRtfLanguage(event.target.value)} className={FIELD}>
+                <option value="zh-CN">中文（zh-CN）</option><option value="en-US">英文（en-US）</option>
+              </select>
+            </label>
+            <p className="mt-2 text-[11px] leading-5 text-[#888888]">译文 / 右列：{leftRtfLanguage === 'zh-CN' ? '英文（en-US）' : '中文（zh-CN）'}。</p>
+          </div>
         </div>
-      </details>
-      <details className="mt-3 border-t border-[#eeeeee] pt-3 text-[12px] text-[#777777]">
-        <summary className="cursor-pointer py-1">已有语料？导入 TMX / RTF / 项目 JSON</summary>
-        <p className="mt-2 leading-6">已有双语文件可直接导入并编辑；项目 JSON 可恢复之前的全部调整。</p>
-        <div className="my-3 flex flex-wrap items-end gap-3">
-          <label className="w-full text-[12px] text-[#555555] sm:w-[240px]">TMX 导入工作方向
-            <select value={tmxDirection} disabled={busy} onChange={event => setTmxDirection(event.target.value as typeof tmxDirection)} className={FIELD + ' mt-1'}>
-              <option value="auto">自动（按有效文件头）</option><option value="zh-en">中文 → 英文</option><option value="en-zh">英文 → 中文</option>
-            </select>
-          </label>
-          <label className="w-full text-[12px] text-[#555555] sm:w-[240px]">RTF 源文 / 左列语言
-            <select value={leftRtfLanguage} disabled={busy} onChange={event => setLeftRtfLanguage(event.target.value)} className={FIELD + ' my-1'}>
-              <option value="zh-CN">中文（zh-CN）</option><option value="en-US">英文（en-US）</option>
-            </select>
-            <span className="block text-[11px] text-[#888888]">目标 / 右列：{leftRtfLanguage === 'zh-CN' ? '英文（en-US）' : '中文（zh-CN）'}</span>
-          </label>
-        </div>
-        <input ref={importRef} type="file" accept=".tmx,.rtf,.json" disabled={busy} className="hidden" aria-label="导入双语语料文件"
+        <input ref={importRef} type="file" accept=".tmx,.rtf" disabled={busy} className="hidden" aria-label="导入双语语料文件"
           onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) importFile(file); }} />
-        <button type="button" className={BUTTON} disabled={busy} onClick={() => importRef.current?.click()}>选择 TMX / RTF / 项目文件</button>
-        <details className="mt-3 text-[11px] leading-5">
-          <summary className="cursor-pointer py-1">高级导入说明与限制</summary>
-          <p className="mt-1">支持多语言 TMX 中的中英工作对、常见双列表格 RTF。TMX 直接读取语言标签；RTF 请确认左右列语言。每个输入文件最大 10 MiB，项目文件最大 30 MiB。旧 Trados 隐藏源文 RTF、复杂合并表格会提示不支持。首次解析 RTF / DOCX 需加载约 62 MB 解析资源。</p>
-        </details>
+        <button type="button" className={BUTTON + ' mt-3'} disabled={busy} onClick={() => importRef.current?.click()}>选择 TMX / RTF 文件</button>
       </details>
-    </details>
+      <details className="mt-3 text-[11px] leading-5 text-[#888888]">
+        <summary className="cursor-pointer">文件说明与导入限制</summary>
+        <p className="mt-2">每个文件最大 10 MiB。支持多语言 TMX 中的中英工作对、普通双列表格 RTF；旧 Trados 隐藏源文 RTF、复杂合并表格会提示不支持。首次解析 RTF / DOCX 需加载约 62 MB 资源。自动对齐支持多句对应和留空，换序可在编辑器中调整。</p>
+      </details>
+    </section>
 
-    {busy && exporting?.format !== 'sdltm' && <div className="mt-4 rounded-lg border border-[#91caff] bg-[#f0f7ff] p-4" role="status">
-      <div className="flex items-center justify-between gap-3"><span className="text-[13px] text-[#245a93]">{progress?.message || '正在处理…'}</span>
+    {busy && exporting?.format !== 'sdltm' && <div className="mt-4 rounded-lg border border-info-border bg-info-bg p-4" role="status">
+      <div className="flex items-center justify-between gap-3"><span className="text-[13px] text-info-text">{progress?.message || '正在处理…'}</span>
         <button type="button" className={BUTTON} onClick={() => cancelWork()}>取消</button></div>
       {progress?.fraction !== undefined && <progress max={1} value={Math.max(0, Math.min(1, progress.fraction))} className="mt-2 h-2 w-full accent-[#1677ff]" aria-label="语料处理进度" />}
     </div>}
-    {error && <p role="alert" className="mt-4 whitespace-pre-wrap break-words rounded-lg border border-[#ffccc7] bg-[#fff2f0] p-3 text-[13px] text-[#b42318]">{error}</p>}
+    {error && <p role="alert" className="mt-4 whitespace-pre-wrap break-words rounded-lg border border-error-border bg-error-bg p-3 text-[13px] text-error-text">{error}</p>}
     {notice && <p role="status" className="mt-3 text-[12px] leading-6 text-[#555555]">{notice}</p>}
-    {project && counts && <>
-      <div className="mt-5 rounded-xl border border-[#e0e0e0] bg-[#fafafa] p-4">
-        <h2 ref={resultHeading} tabIndex={-1} className="scroll-mt-4 break-words text-[17px] font-semibold text-[#222222]">2. 核对与导出 · {project.name}</h2>
-        <div className="my-2 flex flex-wrap items-center gap-3">
-          <p className="text-[12px] text-[#777777]">共 {project.units.length} 行 · {counts.confirmed} 行已复核 · {counts.empty} 行含空侧{project.excludedUnits?.length ? ' · ' + project.excludedUnits.length + ' 行已排除' : ''}</p>
-          <label className="w-full text-[12px] text-[#555555] sm:ml-auto sm:w-[260px]">当前工作方向（左侧 → 右侧）
-            <select value={languageBase(project.sourceLanguage) === 'zh' ? 'zh-en' : 'en-zh'} disabled={busy} className={FIELD + ' mt-1'}
-              onChange={event => { const source = event.target.value === 'zh-en' ? 'zh' : 'en'; operate(current => languageBase(current.sourceLanguage) === source ? current : swapDirection(current)); }}>
-              <option value="zh-en">中文 → 英文</option><option value="en-zh">英文 → 中文</option>
-            </select>
-          </label>
+    <section aria-label="导出语料" className="mt-5 rounded-xl border border-[#e0e0e0] bg-white p-4 sm:p-5">
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_240px] sm:items-end">
+        <div className="min-w-0">
+          <h2 ref={resultHeading} tabIndex={-1} className="scroll-mt-4 text-[16px] font-semibold text-[#333333]">2. 核对与导出</h2>
+          <p className="mt-2 text-[12px] leading-5 text-[#777777]">
+            {project && counts ? <>共 {project.units.length} 行 · {counts.confirmed} 行已复核 · {counts.empty} 行含空侧{project.excludedUnits?.length ? ' · ' + project.excludedUnits.length + ' 行已排除' : ''}</> : '完成文档对齐，或导入已有的 TMX / RTF 后，即可导出。'}
+          </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" disabled={busy || !project.units.length} className="btn btn-primary min-h-11" onClick={() => requestExport('tmx')}>导出 TMX</button>
-          <button type="button" disabled={busy || !project.units.length} className={BUTTON} onClick={() => requestExport('rtf')}>导出双栏 RTF</button>
-          <button type="button" disabled={busy} className={BUTTON} onClick={saveProject}>保存项目 JSON（备份）</button>
-        </div>
-        <p className="mt-2 text-[11px] leading-5 text-[#888888]">逐行编辑并确认后即可导出；项目 JSON 可保留全部内容，方便下次继续。</p>
-        <details className="mt-3 text-[12px] text-[#777777]">
-          <summary className="cursor-pointer py-1">更多导出格式：SDLTM（实验）</summary>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <button type="button" disabled={busy || !project.units.length} className={BUTTON} aria-describedby="sdltm-compatibility" onClick={() => requestExport('sdltm')}>导出 SDLTM（实验）</button>
-            <small id="sdltm-compatibility" className="text-[11px] text-[#888888]">不保证兼容 Trados</small>
-          </div>
-        </details>
-        <details className="mt-2 text-[12px] text-[#777777]">
-          <summary className="cursor-pointer py-1">高级项目设置{project.origin === 'alignment' ? '：名称与锚点重对齐' : '：名称与语言信息'}</summary>
-          <div className="mt-2 space-y-3 border-t border-[#e0e0e0] pt-3">
-            <label className="block max-w-[440px]">项目名称（最多 500 字）<input key={project.id + ':' + project.name} defaultValue={project.name} maxLength={500} disabled={busy}
-              onBlur={event => { const name = event.target.value.trim(); if (name && name !== project.name) operate(project => ({ ...project, name, updatedAt: new Date().toISOString() })); }} className={FIELD + ' mt-1'} /></label>
-            <p className="text-[11px] leading-5">左侧 {languageLabel(project.sourceLanguage)} · {project.sourceLanguage}；右侧 {languageLabel(project.targetLanguage)} · {project.targetLanguage}。</p>
-            {project.origin === 'alignment' && <>
-              <AlignmentOptions mode={mode} onChange={setMode} disabled={busy} />
-              <p className="text-[11px] leading-5">已锁定 {counts.anchors} 个锚点。在每行“更多调整”中锁定正确对应，重新对齐时会保留这些锚点；其余人工调整将被替换。请先保存项目 JSON；如有排除记录，需先在编辑器的批量调整中恢复。</p>
-              <button type="button" disabled={busy} className={BUTTON} onClick={realign}>按锚点重新对齐</button>
-            </>}
-          </div>
-        </details>
-        {project.warnings.length > 0 && <details className="mt-3 text-[12px] text-[#777777]"><summary className="cursor-pointer">查看 {project.warnings.length} 条格式与对齐提示</summary>
-          <ul className="mt-2 max-h-52 list-disc space-y-1 overflow-y-auto pl-5">{project.warnings.map((warning, index) => <li key={index} className="break-words">{warning.message}</li>)}</ul>
-        </details>}
+        {project && <label className="block min-w-0 text-[12px] text-[#555555]">
+          <span className="mb-2 block">导出方向（左侧 → 右侧）</span>
+          <select value={languageBase(project.sourceLanguage) === 'zh' ? 'zh-en' : 'en-zh'} disabled={busy} className={FIELD}
+            onChange={event => { const source = event.target.value === 'zh-en' ? 'zh' : 'en'; operate(current => languageBase(current.sourceLanguage) === source ? current : swapDirection(current)); }}>
+            <option value="zh-en">中文 → 英文</option><option value="en-zh">英文 → 中文</option>
+          </select>
+        </label>}
       </div>
-      <CorpusEditor key={project.id} busy={busy} operate={operate} issue={error || undefined} />
-    </>}
+      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+        <button type="button" disabled={busy || !project?.units.length} className="btn btn-primary min-h-11 w-full" onClick={() => requestExport('tmx')}>导出 TMX</button>
+        <button type="button" disabled={busy || !project?.units.length} className={BUTTON + ' w-full'} onClick={() => requestExport('rtf')}>导出双栏 RTF</button>
+        <button type="button" disabled={busy || !project?.units.length} className={BUTTON + ' w-full'} aria-describedby="sdltm-compatibility" onClick={() => requestExport('sdltm')}>导出 SDLTM</button>
+      </div>
+      <div className="mt-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-1 text-[11px] leading-5 text-[#888888]">
+        <p className="min-w-0 break-all">{project ? '文件名：' + corpusExportName(project) + '（扩展名随格式自动切换）' : '文件自动沿用原文件名；从翻译结果生成的语料使用 Lab-日期时间。'}</p>
+        <small id="sdltm-compatibility" className="shrink-0 text-[11px]">SDLTM 不保证兼容 Trados</small>
+      </div>
+      {project && <p className="mt-2 text-[11px] leading-5 text-[#888888]">导出前请核对双语行。SDLTM 会跳过双空记录；TMX 和 RTF 保留空侧记录。</p>}
+      {project?.origin === 'alignment' && counts && <details className="mt-4 border-t border-[#e0e0e0] pt-3 text-[12px] text-[#777777]">
+        <summary className="cursor-pointer">锚点与重新对齐</summary>
+        <p className="mt-2 text-[11px] leading-5">已锁定 {counts.anchors} 个锚点。重新对齐会按上方选择的对齐方式保留这些锚点，并替换其他调整；建议先保存 JSON 备份。如有排除记录，请先在编辑器中恢复。</p>
+        <button type="button" disabled={busy} className={BUTTON + ' mt-2'} onClick={realign}>按锚点重新对齐</button>
+      </details>}
+      {!!project?.warnings.length && <details className="mt-3 text-[12px] text-[#777777]">
+        <summary className="cursor-pointer">查看 {project.warnings.length} 条格式与对齐提示</summary>
+        <ul className="mt-2 max-h-52 list-disc space-y-1 overflow-y-auto pl-5">{project.warnings.map((warning, index) => <li key={index} className="break-words">{warning.message}</li>)}</ul>
+      </details>}
+    </section>
+    <details className="mt-4 rounded-xl border border-[#e0e0e0] bg-white px-4 py-3 text-[12px] text-[#777777] sm:px-5">
+      <summary className="cursor-pointer font-medium">项目备份与恢复（JSON）</summary>
+      <p className="mt-3 text-[11px] leading-5 text-[#888888]">JSON 保留原文位置、标签、人工调整和复核状态，供下次继续编辑；项目文件最大 30 MiB。</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" disabled={busy || !project} className={BUTTON} onClick={saveProject}>保存项目 JSON</button>
+        <input ref={projectImportRef} type="file" accept=".json" disabled={busy} className="hidden" aria-label="恢复 JSON 项目"
+          onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) importFile(file); }} />
+        <button type="button" disabled={busy} className={BUTTON} onClick={() => projectImportRef.current?.click()}>导入项目 JSON</button>
+      </div>
+    </details>
+    {project && <div className="mt-5"><CorpusEditor key={project.id} busy={busy} operate={operate} issue={error || undefined} /></div>}
     {exporting && <CorpusDialog title={'导出 ' + exporting.format.toUpperCase() + (exporting.format === 'sdltm' ? '（实验）' : '')} close={closeExport} error={error || undefined}>
-      {exporting.format === 'sdltm' && <p className="mb-3 rounded-lg border border-[#ffe58f] bg-[#fffbe6] p-3 text-[13px] leading-6 text-[#874d00]">实验性 TMX → SDLTM 导出，不保证兼容 Trados。浏览器会生成哈希、Token 与模糊索引，并检查本地回读结果；如 Trados 提示重建索引，请按提示操作。Trados 中的完整检索、编辑与保存兼容性仍待验收。请同时保留 TMX 与项目 JSON。</p>}
-      <p className="mb-3 text-[13px] leading-6">本次导出 {exporting.snapshot.units.length} 行，包含 {exporting.snapshot.units.filter(unit => unit.review !== 'confirmed').length} 行待复核内容。{exporting.format !== 'sdltm' && '空侧和双空行会保留，'}已排除的记录不导出。</p>
+      {exporting.format === 'sdltm' && <p className="mb-3 rounded-lg border border-warning-border bg-warning-bg p-3 text-[13px] leading-6 text-warning-text">实验性 TMX → SDLTM 导出，不保证兼容 Trados。浏览器会生成哈希、Token 与模糊索引，并检查本地回读结果；如 Trados 提示重建索引，请按提示操作。Trados 中的完整检索、编辑与保存兼容性仍待验收。请同时保留 TMX 与项目 JSON。</p>}
+      <p className="mb-3 text-[13px] leading-6">本次导出 {exporting.units} 行。原项目有 {exporting.snapshot.units.filter(unit => unit.review !== 'confirmed').length} 行待复核内容。{exporting.format === 'sdltm' ? '双空记录跳过，单侧为空的记录保留。' : '空侧和双空行会保留。'}已排除的记录不导出。</p>
+      <p className="mb-3 break-all text-[12px] leading-5 text-[#555555]">下载文件：{corpusFilename(exporting.snapshot, exporting.format)}</p>
       {!!exporting.losses.length && <ul className="mb-4 max-h-64 list-disc space-y-2 overflow-y-auto pl-5 text-[12px] leading-5 text-[#777777]">{exporting.losses.map((loss, index) => <li key={index}>{loss}</li>)}</ul>}
       <p className="mb-4 text-[12px] text-[#777777]">需要继续编辑、保留全部字段和复核记录时，请同时保存项目 JSON。</p>
-      {busy && exporting.format === 'sdltm' && <div className="mb-4 rounded-lg border border-[#91caff] bg-[#f0f7ff] p-3" role="status" aria-live="polite">
-        <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-[13px] text-[#245a93]">{progress?.message || '正在导出 SDLTM…'}</span>
+      {busy && exporting.format === 'sdltm' && <div className="mb-4 rounded-lg border border-info-border bg-info-bg p-3" role="status" aria-live="polite">
+        <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-[13px] text-info-text">{progress?.message || '正在导出 SDLTM…'}</span>
           <button type="button" className={BUTTON} onClick={() => cancelWork('已取消 SDLTM 导出，项目仍保留，可重试。')}>取消导出</button></div>
         {progress?.fraction !== undefined && <progress max={1} value={Math.max(0, Math.min(1, progress.fraction))} className="mt-2 h-2 w-full accent-[#1677ff]" aria-label="SDLTM 导出进度" />}
       </div>}
@@ -347,30 +364,26 @@ export default function CorpusTools({ onBack }: { onBack: () => void }) {
   </section>;
 }
 
-function filename(project: CorpusProject, extension: string): string {
-  const name = Array.from(project.name.replace(/[<>:"/\\|?*]/g, '_')).map(character => character.codePointAt(0)! < 32 ? '_' : character).join('').slice(0, 90) || '中英语料';
-  const draft = extension !== 'corpus.json' && project.units.some(unit => unit.review !== 'confirmed') ? '-待复核' : '';
-  return name + draft + '-' + new Date().toISOString().replace(/[-:]/g, '').slice(0, 15) + '.' + extension;
-}
 function AlignmentOptions({ mode, onChange, disabled }: { mode: 'semantic' | 'structure'; onChange: (mode: 'semantic' | 'structure') => void; disabled: boolean }) {
-  return <div>
-    <label className="block max-w-[440px] text-[12px] text-[#555555]">对齐方式
-      <select value={mode} disabled={disabled} onChange={event => onChange(event.target.value as typeof mode)} className={FIELD + ' mt-1'}>
+  return <label className="block min-w-0 text-[12px] text-[#555555]">
+      <span className="mb-2 block">对齐方式</span>
+      <select value={mode} disabled={disabled} onChange={event => onChange(event.target.value as typeof mode)} className={FIELD}>
         <option value="semantic">本地语义对齐（推荐）</option><option value="structure">快速结构对齐（免模型下载）</option>
       </select>
-    </label>
-    <p className="mt-2 text-[11px] leading-5 text-[#888888]">{mode === 'semantic' ? '首次使用下载约 136 MB 中英语义模型及约 22 MB 运行资源，可缓存；在浏览器内比较含义，不调用翻译 API。' : '依据长度、数字和顺序生成初步对应，不验证语义；请逐行复核。'}</p>
-  </div>;
+    </label>;
 }
 function DocumentInput({ label, value, onChange, disabled }: { label: string; value: InputDocument; onChange: (value: InputDocument) => void; disabled: boolean }) {
-  return <div className="min-w-0">
-    <label className="mb-2 block text-[13px] font-medium text-[#333333]">{label}
-      <input type="file" accept=".txt,.md,.docx,.rtf" disabled={disabled}
+  const fileRef = useRef<HTMLInputElement>(null);
+  return <div className="min-w-0 rounded-lg border border-[#e0e0e0] bg-[#fafafa] p-3 sm:p-4">
+    <div className="mb-3 flex min-h-11 items-center justify-between gap-3">
+      <h3 className="text-[14px] font-medium text-[#333333]">{label}</h3>
+      <input ref={fileRef} type="file" accept=".txt,.md,.docx,.rtf" disabled={disabled} aria-label={'选择' + label + '文件'}
         onChange={event => { const file = event.target.files?.[0] || null; event.target.value = ''; onChange({ ...value, file }); }}
-        className="mt-2 block max-w-full text-[12px] text-[#777777] file:mr-2 file:rounded-md file:border file:border-[#d9dde4] file:bg-white file:px-3 file:py-2 file:text-[12px]" />
-    </label>
-    {value.file ? <div className="rounded-lg border border-[#e0e0e0] p-3 text-[12px] text-[#555555]"><p className="break-all">{value.file.name} · {(value.file.size / 1024).toFixed(1)} KiB</p>
+        className="hidden" />
+      <button type="button" disabled={disabled} className={BUTTON} onClick={() => fileRef.current?.click()}>{value.file ? '更换文件' : '选择文件'}</button>
+    </div>
+    {value.file ? <div className="flex min-h-[144px] flex-col justify-center rounded-lg border border-[#e0e0e0] bg-white p-3 text-[12px] text-[#555555]"><p className="break-all">{value.file.name} · {(value.file.size / 1024).toFixed(1)} KiB</p>
       <button type="button" disabled={disabled} onClick={() => onChange({ ...value, file: null })} className="mt-2 min-h-10 text-[#1677ff]">移除文件，改用粘贴正文</button></div>
-      : <textarea aria-label={label + '正文'} value={value.text} disabled={disabled} onChange={event => onChange({ ...value, text: event.target.value })} rows={4} className={FIELD + ' resize-y leading-6'} placeholder={'选择 TXT / DOCX / RTF 文件，或在这里粘贴' + label + '正文'} />}
+      : <textarea aria-label={label + '正文'} value={value.text} disabled={disabled} onChange={event => onChange({ ...value, text: event.target.value })} rows={5} className={FIELD + ' block min-h-[144px] resize-y leading-6'} placeholder={'在这里粘贴' + label + '正文，或选择上方文件'} />}
   </div>;
 }

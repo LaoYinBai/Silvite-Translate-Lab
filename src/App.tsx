@@ -216,7 +216,7 @@ function App() {
         onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
         aria-label={theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'}
         title={theme === 'dark' ? '切换到浅色主题' : '切换到深色主题'}
-        className="fixed top-[14px] right-[14px] z-[60] w-9 h-9 rounded-full flex items-center justify-center text-[#555555] hover:text-[#1a1a1a] hover:bg-[#f0f0f0] transition-colors"
+        className="fixed top-[14px] right-[14px] z-[60] w-9 h-9 rounded-full flex items-center justify-center bg-transparent text-text-secondary hover:text-text hover:bg-bg-hover transition-[background-color]"
       >
         {theme === 'dark' ? (
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">

@@ -15,6 +15,7 @@ export function validateCorpusProject(value: unknown): CorpusProject {
     || value.units.length > CORPUS_LIMITS.units || value.warnings.length > 30_000
     || !string(value.createdAt, 100) || !string(value.updatedAt, 100)) throw new Error('不是有效的语料项目，或项目版本不受支持。');
   requireBilingualDirection(value.sourceLanguage, value.targetLanguage);
+  if (value.exportName !== undefined && !string(value.exportName, 500)) throw new Error('项目导出名称无效。');
   if (value.tmxHeader !== undefined && !string(value.tmxHeader, CORPUS_LIMITS.inputBytes)) throw new Error('项目 TMX 头无效。');
   for (const warning of value.warnings) if (!object(warning) || !string(warning.message, 10_000) || warning.unitId !== undefined && !string(warning.unitId, 200)) throw new Error('项目诊断字段无效。');
   const blocks = new Map<string, string>();

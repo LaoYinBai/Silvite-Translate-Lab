@@ -23,6 +23,16 @@
   --color-success: #52c41a;
   --color-warning: #faad14;
   --color-error: #ff4d4f;
+  --color-info-bg: #f0f7ff;
+  --color-info-border: #91caff;
+  --color-info-text: #245a93;
+  --color-warning-bg: #fffbe6;
+  --color-warning-border: #ffe58f;
+  --color-warning-text: #874d00;
+  --color-error-bg: #fff2f0;
+  --color-error-border: #ffccc7;
+  --color-error-text: #b42318;
+  --color-success-text: #237804;
   
   --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", Arial, sans-serif;
 }
@@ -37,6 +47,7 @@ body {
 
 html {
   font-size: 16px;
+  color-scheme: light;
 }
 
 html, body, #root {
@@ -249,6 +260,7 @@ textarea, input[type="text"] {
    touching component files. Toggle: <html class="dark"> (ThemeButton). */
 
 .dark {
+  color-scheme: dark;
   --color-bg: #17181a;
   --color-bg-white: #202124;
   --color-bg-hover: #2a2c2f;
@@ -261,6 +273,17 @@ textarea, input[type="text"] {
   --color-border: #3a3d41;
   --color-border-light: #2f3236;
   --color-accent-bg: #16293f;
+  --color-info-bg: #16293f;
+  --color-info-border: #426b93;
+  --color-info-text: #91caff;
+  --color-warning-bg: #332b1d;
+  --color-warning-border: #806332;
+  --color-warning-text: #ffd591;
+  --color-error-bg: #3a2422;
+  --color-error-border: #914847;
+  --color-error-text: #ffb3b0;
+  --color-success-text: #95de64;
+  --color-success: #237804;
 }
 
 .dark ::-webkit-scrollbar-thumb {
@@ -274,8 +297,12 @@ textarea, input[type="text"] {
 /* Surfaces */
 .dark .bg-white { background-color: #202124; }
 .dark .bg-\[\#f6f7f9\], .dark .bg-\[\#f7f8fa\] { background-color: #1e2023; }
+.dark .bg-\[\#f5f7fa\] { background-color: #1e2023; }
 .dark .bg-\[\#fafafa\] { background-color: #1b1c1e; }
 .dark .bg-\[\#f0f0f0\], .dark .bg-\[\#f5f5f5\] { background-color: #2a2c2f; }
+.dark .bg-\[\#f0f7ff\] { background-color: #16293f; }
+.dark .bg-\[\#b8bdc3\] { background-color: #5c6064; }
+.dark .bg-\[\#ff4d4f\] { background-color: #ff6b6d; }
 .dark .bg-\[\#fcfcfd\] { background-color: #1e2023; }
 .dark .bg-\[\#e0e0e0\] { background-color: #3a3d41; }
 .dark .bg-\[\#e6f4ff\] { background-color: #16293f; }
@@ -287,7 +314,8 @@ textarea, input[type="text"] {
 /* Borders (accent/error borders stay as-is: readable on dark) */
 .dark .border-\[\#e0e0e0\], .dark .border-\[\#e8e8e8\], .dark .border-\[\#e4e6ea\],
 .dark .border-\[\#f0f0f0\], .dark .border-\[\#eaecef\], .dark .border-\[\#d9d9d9\],
-.dark .border-\[\#d0d0d0\] { border-color: #3a3d41; }
+.dark .border-\[\#d0d0d0\], .dark .border-\[\#d9dde4\], .dark .border-\[\#bfbfbf\] { border-color: #3a3d41; }
+.dark .border-\[\#ff4d4f\] { border-color: #914847; }
 .dark .hover\:border-\[\#d0d0d0\]:hover { border-color: #4a4d51; }
 
 /* Text */
@@ -297,10 +325,14 @@ textarea, input[type="text"] {
 .dark .text-\[\#666666\] { color: #a5a8ab; }
 .dark .text-\[\#666666\], .dark .text-\[\#777777\] { color: #a5a8ab; }
 .dark .text-\[\#888888\] { color: #8a8d90; }
-.dark .text-\[\#999999\] { color: #7c8083; }
+.dark .text-\[\#8a8a8a\] { color: #a5a8ab; }
+.dark .text-\[\#999999\] { color: #9ba0a6; }
 .dark .placeholder\:text-\[\#b0b0b0\]::placeholder { color: #6b6e72; }
 .dark .text-\[\#1677ff\] { color: #6aa8ff; }
 .dark .text-\[\#ff4d4f\] { color: #ff6b6d; }
+.dark .text-\[\#b42318\] { color: #ffb3b0; }
+.dark .text-\[\#b45309\], .dark .text-\[\#ad6800\] { color: #ffd591; }
+.dark .text-\[\#175cd3\] { color: #91caff; }
 .dark .hover\:text-\[\#555555\]:hover { color: #b6b8bb; }
 .dark .hover\:text-\[\#1a1a1a\]:hover { color: #e8eaed; }
 .dark .hover\:text-\[\#d9363e\]:hover { color: #ff6b6d; }

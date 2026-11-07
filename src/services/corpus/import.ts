@@ -7,6 +7,7 @@ import { parseStructuredFile } from './jobs';
 import { textDocument } from '../alignment/segment';
 import { parseProject } from './persistence';
 import type { ProgressReporter } from './assets';
+import { corpusDocumentName } from './filename';
 
 const extension = (name: string) => name.toLowerCase().split('.').pop();
 export async function importCorpusFile(file: File, signal: AbortSignal, progress: ProgressReporter, options: CorpusImportOptions = {}) {
@@ -22,6 +23,7 @@ export async function importCorpusFile(file: File, signal: AbortSignal, progress
   if (extension(file.name) === 'tmx') {
     progress('正在读取 TMX 语言变体和标签', 0.5);
     const result = parseTmx(bytes, { ...options, name: options.name || file.name.replace(/\.[^.]+$/, '') });
+    result.exportName = corpusDocumentName([file.name]);
     signal.throwIfAborted();
     return result;
   }
@@ -29,6 +31,7 @@ export async function importCorpusFile(file: File, signal: AbortSignal, progress
   inspectRtf(bytes);
   const parsed = await parseStructuredFile(bytes, 'rtf', signal, progress);
   const project = restoreRtfWhitespace(bytes, corpusFromRtfAst(parsed.ast, { ...options, name: options.name || file.name.replace(/\.[^.]+$/, '') }));
+  project.exportName = corpusDocumentName([file.name]);
   project.warnings.push(...parsed.warnings.map(message => ({ message: '解析器提示：' + message })));
   return project;
 }

@@ -43,6 +43,8 @@ export interface CorpusProject {
   formatVersion: 1;
   id: string;
   name: string;
+  /** Stable download name derived from input files or the translation timestamp. */
+  exportName?: string;
   sourceLanguage: string;
   targetLanguage: string;
   languages: string[];

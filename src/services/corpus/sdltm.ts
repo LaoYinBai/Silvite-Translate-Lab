@@ -1,16 +1,18 @@
 import { validateCorpusProject } from './persistence';
 import { requireBilingualDirection, variantOf, type CorpusProject } from './types';
 import { assertXmlCharacters } from './xml';
+import { corpusExportName } from './filename';
 
 export interface SdltmInput {
   name: string;
   sourceLanguage: string;
   targetLanguage: string;
   pairs: Array<{ source: string; target: string }>;
+  skippedEmptyUnits: number;
 }
 export interface SdltmResult {
   bytes: Uint8Array<ArrayBuffer>;
-  validation: { level: 'local_structural'; units: number; sourceLanguage: string; targetLanguage: string };
+  validation: { level: 'local_structural'; units: number; skippedEmptyUnits: number; sourceLanguage: string; targetLanguage: string };
 }
 
 export function sdltmInput(project: CorpusProject): SdltmInput {
@@ -21,7 +23,7 @@ export function sdltmInput(project: CorpusProject): SdltmInput {
     const canonical = Intl.getCanonicalLocales(language.replaceAll('_', '-'))[0];
     return canonical === 'zh' ? 'zh-CN' : canonical === 'en' ? 'en-US' : canonical;
   };
-  const pairs = project.units.map((unit, index) => {
+  const allPairs = project.units.map((unit, index) => {
     const side = (language: string) => {
       const key = (value: string) => value.trim().replaceAll('_', '-').toLowerCase();
       const matches = unit.variants.filter(variant => key(variant.language) === key(language));
@@ -35,7 +37,10 @@ export function sdltmInput(project: CorpusProject): SdltmInput {
     assertXmlCharacters(source.text); assertXmlCharacters(target.text);
     return { source: source.text, target: target.text };
   });
-  return { name: project.name, sourceLanguage: culture(project.sourceLanguage), targetLanguage: culture(project.targetLanguage), pairs };
+  const pairs = allPairs.filter(pair => pair.source.trim() || pair.target.trim());
+  if (!pairs.length) throw new Error('全部记录的中英文均为空，没有可导出的 SDLTM 语料。');
+  return { name: corpusExportName(project), sourceLanguage: culture(project.sourceLanguage), targetLanguage: culture(project.targetLanguage),
+    pairs, skippedEmptyUnits: allPairs.length - pairs.length };
 }
 
 export function sdltmExportLosses(project: CorpusProject): string[] {
@@ -46,6 +51,7 @@ export function sdltmExportLosses(project: CorpusProject): string[] {
     '仅导出当前中英工作对的纯文本。TMX 属性、备注、作者、时间、额外语言、复核记录等不写入 SDLTM；完整资料请同时保存项目 JSON 或 TMX。',
   ];
   const empty = input.pairs.filter(pair => !pair.source.trim() || !pair.target.trim()).length;
+  if (input.skippedEmptyUnits) losses.push(`按 SDLTM 终版规范跳过 ${input.skippedEmptyUnits} 行双空记录；原项目中的记录仍保留。`);
   if (empty) losses.push(`保留 ${empty} 行含空侧的记录，部分 CAT 工具可能忽略这些记录。`);
   if (project.excludedUnits?.length) losses.push(`已排除的 ${project.excludedUnits.length} 行不导出。`);
   return losses;
