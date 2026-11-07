@@ -106,6 +106,7 @@ await writeFile(path.join(out, 'SOURCES'), [
   'Pandoc WASM archive SHA256: 234d2020a7f3a9aab387bd35df3c17ca2ba0078a82490e2b3ede890d648d64fe',
   'WASI JS shim 0.3.0: MIT/Apache-2.0; https://github.com/bjorn3/browser_wasi_shim',
   'SQLite core/WASM: public domain, Emscripten glue MIT/NCSA; @sqlite.org/sqlite-wasm wrapper/types 3.54.1-build1 Apache-2.0: https://github.com/sqlite/sqlite-wasm',
+  'Snowball English stemmer in SDLTM Worker: snowball-stemmers 0.6.0, package license ISC; https://github.com/mazko/jssnowball',
   'Experimental SDLTM empty template: RWS/trados-studio-api-samples, Apache-2.0; Git blob 6b429dd22e611042f5cf232f3ec3877c7b088d80',
   'SDLTM template SHA256: d0e367a1de5d1ed9f65d9cd031e8d9c551cb5fe4ecb1a5ec948f5a5e2db70eaf; no private corpus samples are distributed.',
   'Transformers.js 3.8.1: Apache-2.0; https://github.com/huggingface/transformers.js',

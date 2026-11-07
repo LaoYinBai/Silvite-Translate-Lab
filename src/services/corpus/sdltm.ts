@@ -41,8 +41,8 @@ export function sdltmInput(project: CorpusProject): SdltmInput {
 export function sdltmExportLosses(project: CorpusProject): string[] {
   const input = sdltmInput(project);
   const losses = [
-    '不保证兼容 Trados。此功能为实验性 SDLTM 导出，仅验证 SQLite 结构、语言方向、数量与文本回读。',
-    '句段哈希使用占位算法，未生成 Trados 专有分词、模糊检索、上下文或对齐索引；不能保证原生打开、搜索、编辑或保存。',
+    '不保证兼容 Trados。此功能为实验性 SDLTM 导出，会在浏览器内生成句段哈希、Token 数据和双向模糊索引，并核对数据库结构与逐行回读结果。',
+    '按逆向终稿生成 SDLTM，并保留待重建的分词签名。打开后如提示重建索引，请按提示操作，这是本方案的设计行为；Trados 会按自身配置补全语言处理、上下文、片段和词级对齐数据。',
     '仅导出当前中英工作对的纯文本。TMX 属性、备注、作者、时间、额外语言、复核记录等不写入 SDLTM；完整资料请同时保存项目 JSON 或 TMX。',
   ];
   const empty = input.pairs.filter(pair => !pair.source.trim() || !pair.target.trim()).length;
@@ -51,15 +51,14 @@ export function sdltmExportLosses(project: CorpusProject): string[] {
   return losses;
 }
 
-/** The duplicate LastElement is part of the native serialization, not another text run. */
+/** Plain-text Segment profile from the implementation guide; one Text element. */
 export function sdltmSegment(text: string, language: string): string {
   assertXmlCharacters(text); assertXmlCharacters(language);
   const escape = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;').replaceAll("'", '&apos;').replaceAll('\r', '&#13;');
   const value = '<Value>' + escape(text) + '</Value>';
   return '<Segment xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">'
-    + '<Elements><Text>' + value + '</Text></Elements><LastElement xsi:type="Text">' + value
-    + '</LastElement><CultureName>' + escape(language) + '</CultureName></Segment>';
+    + '<Elements><Text>' + value + '</Text></Elements><CultureName>' + escape(language) + '</CultureName></Segment>';
 }
 
 /** .NET Guid.ToByteArray(): the first 4/2/2-byte groups use little endian. */
@@ -68,8 +67,33 @@ export function sdltmGuid(uuid = crypto.randomUUID()): Uint8Array<ArrayBuffer> {
   return Uint8Array.from([3, 2, 1, 0, 5, 4, 7, 6, 8, 9, 10, 11, 12, 13, 14, 15], index => bytes[index]);
 }
 
-/** Experimental placeholder only; this is NOT Trados' proprietary segment hash. */
-export async function sdltmHash(text: string): Promise<bigint> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-  return new DataView(digest).getBigInt64(0, false);
+function jenkins32(bytes: Uint8Array): number {
+  let hash = 0;
+  for (const byte of bytes) {
+    hash = (hash + byte) >>> 0;
+    hash = (hash + (hash << 10)) >>> 0;
+    hash = (hash ^ (hash >>> 6)) >>> 0;
+  }
+  hash = (hash + (hash << 3)) >>> 0;
+  hash = (hash ^ (hash >>> 11)) >>> 0;
+  return (hash + (hash << 15)) >>> 0;
+}
+
+function fnv1a32(bytes: Uint8Array): number {
+  let hash = 2166136261;
+  for (const byte of bytes) hash = Math.imul((hash ^ byte) >>> 0, 16777619) >>> 0;
+  return hash;
+}
+
+/** GetStrictHash over the plain-text identity; recognizer normalization still requires reindexing. */
+export function sdltmHash(text: string): bigint {
+  const identity = text.replaceAll('\\', '\\\\');
+  // Explicit little endian, independent of the browser's native typed-array byte order.
+  const bytes = new Uint8Array(identity.length * 2);
+  const view = new DataView(bytes.buffer);
+  for (let index = 0; index < identity.length; index++) view.setUint16(index * 2, identity.charCodeAt(index), true);
+  // JavaScript bitwise AND is signed; the engine adds the high word as uint32.
+  const high = (jenkins32(bytes) & 0xffff0000) >>> 0;
+  const hash = BigInt.asIntN(64, BigInt(fnv1a32(bytes)) + BigInt(high) + BigInt(identity.length & 0xffff));
+  return hash === 0n || hash === -1n ? -2n : hash;
 }

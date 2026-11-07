@@ -204,7 +204,7 @@ export default function CorpusTools({ onBack }: { onBack: () => void }) {
         });
         bytes = result.bytes;
         message = '已导出 ' + result.validation.units + ' 行 SDLTM（实验），工作方向 ' + result.validation.sourceLanguage + ' → ' + result.validation.targetLanguage
-          + '。仅完成本地结构校验，不保证兼容 Trados。';
+          + '。本地结构、文本与索引回读检查通过；如 Trados 提示重建索引，请按提示操作。不保证兼容 Trados。';
       } else bytes = format === 'tmx' ? exportTmx(snapshot) : exportRtf(snapshot);
       if (!current()) return;
       if (useCorpusStore.getState().project !== snapshot) {
@@ -332,7 +332,7 @@ export default function CorpusTools({ onBack }: { onBack: () => void }) {
       <CorpusEditor key={project.id} busy={busy} operate={operate} issue={error || undefined} />
     </>}
     {exporting && <CorpusDialog title={'导出 ' + exporting.format.toUpperCase() + (exporting.format === 'sdltm' ? '（实验）' : '')} close={closeExport} error={error || undefined}>
-      {exporting.format === 'sdltm' && <p className="mb-3 rounded-lg border border-[#ffe58f] bg-[#fffbe6] p-3 text-[13px] leading-6 text-[#874d00]">实验性 TMX → SDLTM 导出，不保证兼容 Trados。结果仅经过本地结构校验，尚未验证 Trados 中的打开、检索和编辑兼容性。请同时保留 TMX 与项目 JSON。</p>}
+      {exporting.format === 'sdltm' && <p className="mb-3 rounded-lg border border-[#ffe58f] bg-[#fffbe6] p-3 text-[13px] leading-6 text-[#874d00]">实验性 TMX → SDLTM 导出，不保证兼容 Trados。浏览器会生成哈希、Token 与模糊索引，并检查本地回读结果；如 Trados 提示重建索引，请按提示操作。Trados 中的完整检索、编辑与保存兼容性仍待验收。请同时保留 TMX 与项目 JSON。</p>}
       <p className="mb-3 text-[13px] leading-6">本次导出 {exporting.snapshot.units.length} 行，包含 {exporting.snapshot.units.filter(unit => unit.review !== 'confirmed').length} 行待复核内容。{exporting.format !== 'sdltm' && '空侧和双空行会保留，'}已排除的记录不导出。</p>
       {!!exporting.losses.length && <ul className="mb-4 max-h-64 list-disc space-y-2 overflow-y-auto pl-5 text-[12px] leading-5 text-[#777777]">{exporting.losses.map((loss, index) => <li key={index}>{loss}</li>)}</ul>}
       <p className="mb-4 text-[12px] text-[#777777]">需要继续编辑、保留全部字段和复核记录时，请同时保存项目 JSON。</p>
