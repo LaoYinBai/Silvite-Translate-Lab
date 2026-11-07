@@ -5,7 +5,7 @@ import { variantOf, type BilingualUnit, type CorpusProject, type UnitVariant } f
 import { addEmptyUnit, detachVariant, excludeUnits, mergeUnits, moveVariant, restoreExcluded, setReview, splitUnit, swapDirection, toggleAnchor, editVariant } from '../../services/corpus/model';
 
 type Operation = (change: (project: CorpusProject) => CorpusProject) => boolean;
-const FIELD = 'w-full rounded-md border border-[#d9dde4] bg-white px-3 py-2 text-[14px] text-[#222222]';
+const FIELD = 'w-full rounded-md border border-border bg-bg-white px-3 py-2 text-[14px] text-text placeholder:text-text-placeholder';
 const BUTTON = 'btn btn-secondary min-h-10 text-[12px]';
 const REVIEW_LABEL = { unreviewed: '待复核', edited: '已修改 · 待复核', confirmed: '已复核' };
 
@@ -17,7 +17,7 @@ export function CorpusDialog({ title, children, close, error }: { title: string;
     <div className="mb-4 flex items-center justify-between gap-3"><h2 className="text-[18px] font-semibold">{title}</h2>
       <button type="button" onClick={close} aria-label="关闭对话框" className="min-h-10 min-w-10 text-[20px] text-[#888888]">×</button></div>
     {children}
-    {error && <p role="alert" className="mt-3 whitespace-pre-wrap text-[12px] leading-5 text-[#b42318]">{error}</p>}
+    {error && <p role="alert" className="mt-3 whitespace-pre-wrap text-[12px] leading-5 text-error-text">{error}</p>}
   </dialog>;
 }
 
@@ -35,7 +35,7 @@ function SideEditor({ side, label, disabled, onSave }: {
       rows={Math.max(2, Math.min(8, side.text.split('\n').length + Math.floor(side.text.length / 90)))}
       placeholder="此侧为空；内容不会被自动删除" className={FIELD + ' resize-y leading-6 [overflow-wrap:anywhere]'} />
     {side.markup !== undefined && <p className="mt-1 text-[10px] text-[#888888]">含受保护的行内标签，请在“更多调整”中选择“编辑标签 XML”修改文字。</p>}
-    {text !== side.text && <p className="mt-1 text-[10px] text-[#ad6800]">此处尚有未保存修改；离开输入框后应用，失败时草稿会保留。</p>}
+    {text !== side.text && <p className="mt-1 text-[10px] text-warning-text">此处尚有未保存修改；离开输入框后应用，失败时草稿会保留。</p>}
   </div>;
 }
 
@@ -46,10 +46,10 @@ const CorpusRow = memo(function CorpusRow({ unit, index, nextId, sourceLanguage,
   const source = variantOf(unit, sourceLanguage), target = variantOf(unit, targetLanguage);
   const unmatched = !source.text.trim() || !target.text.trim();
   return <li className={'min-w-0 rounded-lg border bg-white ' + (selected ? 'border-[#1677ff]' : 'border-[#e0e0e0]')}>
-    <div className="flex flex-wrap items-center gap-2 border-b border-[#eeeeee] bg-[#fafafa] px-3 py-2 text-[11px] text-[#777777]">
+    <div className="flex flex-wrap items-center gap-2 border-b border-border-light bg-[#fafafa] px-3 py-2 text-[11px] text-[#777777]">
       <span>第 {index + 1} 行</span>
-      <span className={unit.review === 'confirmed' ? 'text-[#389e0d]' : 'text-[#ad6800]'}>{REVIEW_LABEL[unit.review]}</span>
-      {unmatched && <span className="rounded bg-[#fff7e6] px-2 py-1 text-[#ad6800]">包含空侧</span>}
+      <span className={unit.review === 'confirmed' ? 'text-success-text' : 'text-warning-text'}>{REVIEW_LABEL[unit.review]}</span>
+      {unmatched && <span className="rounded bg-warning-bg px-2 py-1 text-warning-text">包含空侧</span>}
       {unit.locked && <span className="rounded bg-[#e6f4ff] px-2 py-1 text-[#1677ff]">锚点已锁定</span>}
     </div>
     <div className="grid grid-cols-1 gap-3 p-3 md:grid-cols-2">
@@ -62,7 +62,7 @@ const CorpusRow = memo(function CorpusRow({ unit, index, nextId, sourceLanguage,
       <button type="button" disabled={busy} onClick={() => operate(project => setReview(project, [unit.id], unit.review !== 'confirmed'))} className="text-[#1677ff]">{unit.review === 'confirmed' ? '改为待复核' : '确认此行'}</button>
       <details className="mt-1 min-w-0">
         <summary className="w-fit cursor-pointer py-2 text-[#777777]">更多调整{selected ? ' · 已勾选' : ''}</summary>
-        <div className="mt-1 rounded-lg border border-[#eeeeee] bg-[#fafafa] p-3">
+        <div className="mt-1 rounded-lg border border-border-light bg-[#fafafa] p-3">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             <label className="flex min-h-9 items-center gap-2"><input type="checkbox" checked={selected} disabled={busy}
               onChange={() => useCorpusStore.getState().select(unit.id)} aria-label={'选择第 ' + (index + 1) + ' 行'} />选择此行，参与批量调整</label>

@@ -1,11 +1,13 @@
 import type { ParagraphAlignment } from '../alignment/paragraphs';
 import { assertCorpusCoverage } from '../alignment/corpusAlign';
 import { corpusId, createCorpusProject, type CorpusBlock, type CorpusDocument } from './types';
+import { corpusDefaultName } from './filename';
 
 export function corpusFromTranslation(alignment: ParagraphAlignment) {
   const project = createCorpusProject('中英翻译语料', 'alignment', {
     sourceLanguage: alignment.sourceLanguage, targetLanguage: alignment.targetLanguage,
   });
+  project.exportName = corpusDefaultName(new Date(project.createdAt));
   const sourceBlock: CorpusBlock = { id: corpusId('block'), text: alignment.sourceText, kind: 'paragraph' };
   const targetBlock: CorpusBlock = { id: corpusId('block'), text: alignment.targetText, kind: 'paragraph' };
   const source: CorpusDocument = { id: corpusId('document'), name: '本次翻译原文', language: project.sourceLanguage, blocks: [sourceBlock] };
