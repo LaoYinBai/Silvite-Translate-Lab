@@ -17,11 +17,14 @@ const jobs = [
 
 for (const job of jobs) {
   fs.mkdirSync(path.dirname(job.out), { recursive: true });
-  fs.mkdirSync(path.dirname(job.orig), { recursive: true });
 
   const meta = await sharp(job.src).metadata();
   await sharp(job.src).jpeg({ quality: 84, mozjpeg: true }).toFile(job.out);
-  fs.copyFileSync(job.src, job.orig);
+
+  if (path.resolve(job.src) !== path.resolve(job.orig)) {
+    fs.mkdirSync(path.dirname(job.orig), { recursive: true });
+    fs.copyFileSync(job.src, job.orig);
+  }
 
   const kb = Math.round(fs.statSync(job.out).size / 1024);
   console.log(`${job.out}: ${meta.width}x${meta.height} -> ${kb} KB`);
